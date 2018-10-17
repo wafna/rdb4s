@@ -22,6 +22,7 @@ package object db {
       extends Exception(e)
   class CPTimeoutException(timeout: FiniteDuration)
       extends TimeoutException(s"Timeout exceeded: $timeout")
+  class CPTaskRejectedException(msg: String) extends Exception(msg)
   /**
     * Results deferred to future execution in the connection pool.
     */
@@ -35,27 +36,6 @@ package object db {
   }
   object DBPromise {
     def apply[T](t: T): DBPromise[T] = _ => Success(t)
-  }
-  /**
-    * The client interface.
-    */
-  abstract class ConnectionPool[R <: ConnectionRDB4S] {
-    def addTask[T](task: TransactionManager[R] => T): DBPromise[T]
-    def autoCommit[T](task: R => T): DBPromise[T] = addTask(_ autoCommit task)
-    def blockCommit[T](task: R => T): DBPromise[T] = addTask(_ blockCommit task)
-  }
-  /**
-    * Listens to events in the connection pool.  Used for gathering metrics.
-    * These methods are called in line rather than being driven off a message bus
-    * so make it quick.
-    */
-  trait ConnectionPoolListener {
-    def poolStart(): Unit
-    def poolStop(queueSize: Int): Unit
-    def taskStart(queueSize: Int, timeInQueue: Duration): Unit
-    def taskStop(queueSize: Int, timeToExecute: Duration): Unit
-    def threadStart(threadPoolSize: Int): Unit
-    def threadStop(threadPoolSize: Int): Unit
   }
   /**
     * Produces vendor specific connections.
@@ -198,17 +178,6 @@ package object db {
     try consume(resource)
     finally dispose(resource)
   /**
-    * Ignores all events.
-    */
-  object ConnectionPoolListenerNOOP extends ConnectionPoolListener {
-    def poolStart(): Unit = Unit
-    def poolStop(queueSize: Int): Unit = Unit
-    def taskStart(queueSize: Int, timeInQueue: Duration): Unit = Unit
-    def taskStop(queueSize: Int, timeToExecute: Duration): Unit = Unit
-    def threadStart(threadPoolSize: Int): Unit = Unit
-    def threadStop(threadPoolSize: Int): Unit = Unit
-  }
-  /**
     * This forces clients to declare explicitly how they want transactions to be managed.
     */
   class TransactionManager[R <: ConnectionRDB4S](connection: R) {
@@ -236,50 +205,116 @@ package object db {
     }
   }
   /**
+    * Listens to events in the connection pool.  Used for gathering metrics.
+    * These methods are called in line rather than being driven off a message bus
+    * so make it quick.
+    */
+  class ConnectionPoolListener {
+    def poolStart(): Unit = Unit
+    def poolStop(queueSize: Int): Unit = Unit
+    def taskStart(queueSize: Int, timeInQueue: Duration): Unit = Unit
+    def taskStop(queueSize: Int, timeToExecute: Duration): Unit = Unit
+    def threadStart(threadPoolSize: Int): Unit = Unit
+    def threadStop(threadPoolSize: Int): Unit = Unit
+  }
+  /**
+    * Static instance for implicit defaults.
+    */
+  object ConnectionPoolListener extends ConnectionPoolListener
+  /**
+    * The client interface.
+    */
+  trait ConnectionPool[R <: ConnectionRDB4S] {
+    def addTask[T](task: TransactionManager[R] => T): DBPromise[T]
+    def autoCommit[T](task: R => T): DBPromise[T] = addTask(_ autoCommit task)
+    def blockCommit[T](task: R => T): DBPromise[T] = addTask(_ blockCommit task)
+  }
+  /**
     * A dynamically sized thread pool where each thread is assigned one connection.
     */
   object ConnectionPool {
-    private class TaskResult[T]() extends DBPromise[T] {
-      private var result: Option[Try[T]] = None
-      def put(v: Try[T]): Unit = synchronized {
-        if (result.isDefined) sys error s"Cannot put to fulfilled result."
-        result = Some(v)
-        notifyAll()
+    class Config() {
+      private var _name: Option[String] = None
+      private var _maxPoolSize: Option[Int] = None
+      private var _minPoolSize: Option[Int] = None
+      private var _idleTimeout: Option[FiniteDuration] = None
+      private var _maxQueueSize: Option[Int] = None
+      def name: Option[String] = _name
+      def name(n: String): this.type = {
+        _name = Some(n)
+        this
       }
-      def take(timeOut: FiniteDuration): Try[T] = synchronized {
-        var remaining = timeOut.toMillis
-        while (result.isEmpty && 0 < remaining) {
-          val t0 = System.currentTimeMillis()
-          wait(remaining)
-          remaining -= (System.currentTimeMillis() - t0)
-        }
-        result match {
-          case Some(v) =>
-            v
-          case None =>
-            throw new CPTimeoutException(timeOut)
-        }
+      def maxPoolSize: Option[Int] = _maxPoolSize
+      def maxPoolSize(i: Int): this.type = {
+        if (1 > i) throw new IllegalArgumentException(s"maxPoolSize must be positive, got $i")
+        _maxPoolSize = Some(i)
+        this
+      }
+      def minPoolSize: Option[Int] = _minPoolSize
+      def minPoolSize(i: Int): this.type = {
+        if (0 > i) throw new IllegalArgumentException(s"minPoolSize must be non-negative, got $i")
+        _minPoolSize = Some(i)
+        this
+      }
+      def idleTimeout: Option[FiniteDuration] = _idleTimeout
+      def idleTimeout(t: FiniteDuration): this.type = {
+        if (1 > t.toMillis) throw new IllegalArgumentException(s"idleTimeout must be positive, got $t")
+        _idleTimeout = Some(t)
+        this
+      }
+      def maxQueueSize: Option[Int] = _maxQueueSize
+      def maxQueueSize(i: Int): this.type = {
+        if (1 > i) throw new IllegalArgumentException(s"maxQueueSize must be positive, got $i")
+        _maxQueueSize = Some(i)
+        this
       }
     }
-    def apply[R <: ConnectionRDB4S](name: String, maxSize: Int, idleTimeout: Duration, connectionManager: ConnectionManagerRDB4S[R])(
-        borrow: ConnectionPool[R] => Unit)(implicit listener: ConnectionPoolListener = ConnectionPoolListenerNOOP): Unit = {
+    def apply[R <: ConnectionRDB4S](config: ConnectionPool.Config, connectionManager: ConnectionManagerRDB4S[R])(
+        borrow: ConnectionPool[R] => Unit)(implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit = {
       import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
-      class Task[T](private[ConnectionPool] val result: TaskResult[T], task: TransactionManager[R] => T) {
-        val created: Long = System.currentTimeMillis()
-        def run(resource: TransactionManager[R]): Unit = result put Try(task(resource))
-      }
+      val poolName = config.name.getOrElse(sys error "name required.")
+      val maxPoolSize = config.maxPoolSize.getOrElse(sys error "maxPoolSize required.")
+      val minPoolSize = config.minPoolSize.getOrElse(0)
+      if (minPoolSize > maxPoolSize) sys error s"minPoolSize ($minPoolSize) > maxPoolSize ($maxPoolSize)"
+      val idleTimeout = config.idleTimeout.getOrElse(sys error "idleTimeout required.")
+      val maxQueueSize = config.maxQueueSize.getOrElse(sys error "maxQueueSize required.")
       val active = new AtomicBoolean(true)
       val synch = new Object()
       val queue = new LinkedBlockingQueue[Task[_]]()
       var threadPool = Map[String, Thread]()
+      def createThread(): Unit = {
+        val runnerName: String = s"$poolName-${threadPool.size}"
+        val thread = new Thread(new TaskRunner(runnerName), runnerName)
+        threadPool += (runnerName -> thread)
+        thread.start()
+      }
       def adjustThreadPool(): Unit = if (active.get) synch synchronized {
         val poolSize = threadPool.size
-        if (poolSize < maxSize && !queue.isEmpty) {
-          val runnerName: String = s"$name-$poolSize"
-          val thread = new Thread(new TaskRunner(runnerName), runnerName)
-          threadPool += (runnerName -> thread)
-          thread.start()
+        if (poolSize < minPoolSize || (poolSize < maxPoolSize && !queue.isEmpty)) {
+          createThread()
         }
+      }
+      class TaskResult[T]() extends DBPromise[T] {
+        private var result: Option[Try[T]] = None
+        def put(v: Try[T]): Unit = synchronized {
+          if (result.isDefined)
+            sys error s"Cannot put to fulfilled result."
+          result = Some(v)
+          notifyAll()
+        }
+        def take(timeOut: FiniteDuration): Try[T] = synchronized {
+          var remaining = timeOut.toMillis
+          while (result.isEmpty && 0 < remaining) {
+            val t0 = System.currentTimeMillis()
+            wait(remaining)
+            remaining -= (System.currentTimeMillis() - t0)
+          }
+          result.getOrElse(throw new CPTimeoutException(timeOut))
+        }
+      }
+      class Task[T](val result: TaskResult[T], task: TransactionManager[R] => T) {
+        val created: Long = System.currentTimeMillis()
+        def run(resource: TransactionManager[R]): Unit = result put Try(task(resource))
       }
       class TaskRunner[T](val runnerName: String) extends Runnable {
         override def run(): Unit = {
@@ -311,8 +346,7 @@ package object db {
           }
           finally {
             synch synchronized {
-              val name = Thread.currentThread().getName
-              threadPool = threadPool - name
+              threadPool = threadPool - Thread.currentThread().getName
             }
             listener.threadStop(threadPool.size)
             // This thread is biffed but there still may be more to do.
@@ -323,15 +357,21 @@ package object db {
       }
       try {
         listener.poolStart()
+        // The initial thread pool (reified by toArray).
+        Iterator.continually(createThread()).take(minPoolSize).toArray
         borrow(new ConnectionPool[R] {
           override def addTask[T](task: TransactionManager[R] => T): DBPromise[T] = if (!active.get)
-            sys error s"ConnectionPool is shutting down: no tasks will be accepted."
+            throw new CPTaskRejectedException(s"ConnectionPool is shutting down: no tasks will be accepted.")
           else {
             val result = new TaskResult[T]()
             // important to add the task before deciding whether to add a thread.
-            queue.put(new Task[T](result, task))
-            adjustThreadPool()
-            result
+            if (maxQueueSize > queue.size()) {
+              queue.put(new Task[T](result, task))
+              adjustThreadPool()
+              result
+            } else {
+              throw new CPTaskRejectedException(s"max queue size exceeded: $maxQueueSize")
+            }
           }
         })
       } finally {

@@ -26,7 +26,7 @@ object HSQL extends Database[org.hsqldb.jdbcDriver] {
   /**
     * One liner convenience method.
     */
-  def apply(database: String, poolName: String, maxSize: Int, idleTimeout: Duration)(borrow: DB => Unit)(
-      implicit listener: ConnectionPoolListener = ConnectionPoolListenerNOOP): Unit =
-    ConnectionPool[Connection](poolName, maxSize, idleTimeout, new ConnectionManager(database))(borrow)
+  def apply(database: String, config: ConnectionPool.Config)(borrow: DB => Unit)(
+      implicit listener: ConnectionPoolListener): Unit =
+    ConnectionPool[Connection](config, new ConnectionManager(database))(borrow)
 }

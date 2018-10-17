@@ -14,16 +14,16 @@ object TestDomain {
 object TestDB {
   // Database tables.
   private class TUser(alias: String) extends Table("user", alias) {
-    val id: TField = field("id")
-    val name: TField = field("name")
+    val id: TField = "id"
+    val name: TField = "name"
   }
   private class TCompany(alias: String) extends Table("company", alias) {
-    val id: TField = field("id")
-    val name: TField = field("name")
+    val id: TField = "id"
+    val name: TField = "name"
   }
   private class TAssociation(alias: String) extends Table("association", alias) {
-    val userId: TField = field("user_id")
-    val companyId: TField = field("company_id")
+    val userId: TField = "user_id"
+    val companyId: TField = "company_id"
   }
   private def checkUpdate(expectedRowCount: Int)(promise: DBPromise[Int]): DBPromise[Unit] =
     promise.map(count => if (count != expectedRowCount) sys error s"Updated $count row(s) but expected $expectedRowCount row(s).")
@@ -49,9 +49,9 @@ object TestDB {
       def extractor(rs: RSCursor): Company = Company(rs.int.get, rs.string.get)
     }
   }
-  def apply(database: String, poolName: String, maxSize: Int, idleTimeout: Duration)(
-      borrow: TestDB => Unit)(implicit listener: ConnectionPoolListener = ConnectionPoolListenerNOOP): Unit =
-    HSQL(database, poolName, maxSize, idleTimeout)(db => borrow(new TestDB(db)))
+  def apply(database: String, config: ConnectionPool.Config)(
+      borrow: TestDB => Unit)(implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit =
+    HSQL(database, config)(db => borrow(new TestDB(db)))
 }
 /**
   * Provides a schema and API for a test database.

@@ -6,7 +6,8 @@ import wafna.rdb4s.test.TestDomain.{Company, User}
 import scala.concurrent.duration._
 class TestDSL extends FlatSpec {
   "xql" should "create valid sql" in {
-    TestDB(getClass.getCanonicalName, "hdb", 1, 1.second) { db =>
+    val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(1).idleTimeout(1.second).maxQueueSize(10)
+    TestDB(getClass.getCanonicalName, cpConfig) { db =>
       db.createSchema() reflect 1.second
       // Some data.  We'll use the fact that the array index and the entity id will be identical.
       val userNames = Array("Bob", "Carol", "Ted", "Alice")

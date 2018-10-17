@@ -1,11 +1,13 @@
 package wafna.rdb4s.test
 import org.scalatest.FlatSpec
 import wafna.rdb4s.db.{ConnectionPool, DBPromise}
+
 import scala.concurrent.duration._
 class TestSQL extends FlatSpec {
   "sdbc" should "execute SQL statements" in {
     implicit val listener: ConnectionPoolEventCounter = new ConnectionPoolEventCounter
-    ConnectionPool[HSQL.Connection]("hdb", 1, 1.second,
+    val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(1).idleTimeout(1.second).maxQueueSize(10000)
+    ConnectionPool[HSQL.Connection](cpConfig,
       new HSQL.ConnectionManager("sdbc")) { db =>
       val timeout = 500.millis
       assertResult(42)(db.autoCommit(_.query("SELECT ? FROM INFORMATION_SCHEMA.SYSTEM_USERS", List(42))(_.int.get).head) reflect timeout)

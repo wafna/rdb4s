@@ -53,9 +53,9 @@ object HSQL extends Database[org.hsqldb.jdbcDriver] {
   /**
     * One liner convenience method.
     */
-  def apply(database: String, poolName: String, maxSize: Int, idleTimeout: Duration)(borrow: DB => Unit)(
+  def apply(database: String, config: ConnectionPool.Config)(borrow: DB => Unit)(
       implicit listener: ConnectionPoolListener = ConnectionPoolListenerNOOP): Unit =
-    ConnectionPool[Connection](poolName, maxSize, idleTimeout, new ConnectionManager(database))(borrow)
+    ConnectionPool[Connection](config, new ConnectionManager(database))(borrow)
 }
 </pre>
 
@@ -66,7 +66,12 @@ Here is an example of using it.
 
 <pre>
 import scala.concurrent.duration._
-HSQL("database", "thread-pool", 3, 1.second) { db =>
+val cpConfig = new ConnectionPool.Config()
+    .name("db-pool")
+    .maxPoolSize(3)
+    .idleTimeout(1.minute)
+    .maxQueueSize(1000)
+HSQL("database", cpConfig) { db =>
   val timeout = 1.second
   // pick a commit strategy
   db autoCommit { cx =>
@@ -101,8 +106,8 @@ Each table you reference needs to be modeled, like so:
 
 <pre>
 class TUser(alias: String) extends Table("user", alias) {
-    val id: TField = field("id")
-    val name: TField = field("name")
+    val id: TField = "id"
+    val name: TField = "name"
 }
 </pre>
 

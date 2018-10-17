@@ -17,10 +17,11 @@ package object dsl {
     * @param alias The name in the query.
     */
   abstract class Table(val tableName: String, alias: String) {
-    case class TField(fieldName: String) extends Field(fieldName) {
+    implicit def `string to field`(fieldName: String): TField = field(fieldName)
+    private var fields = Set[String]()
+    case class TField protected(fieldName: String) extends Field(fieldName) {
       override def qname: String = s"$alias.$name"
     }
-    private var fields = Set[String]()
     /**
       * Defines a table field.
       */
