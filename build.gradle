@@ -19,9 +19,6 @@ buildscript {
     }
 }
 
-// plugins {
-//   id "com.github.maiflai.scalatest" version "0.23"
-// }
 apply plugin: 'com.github.maiflai.scalatest'
 apply plugin: 'org.dvaske.gradle.git-build-info'
 apply plugin: 'com.github.johnrengelman.shadow'
@@ -35,14 +32,19 @@ repositories {
 }
 apply plugin: 'scala'
 group = 'rdb4s'
-version = '1.0'
+version = '0.1'
 sourceCompatibility = '1.8'
 targetCompatibility = '1.8'
 jar {
-    baseName = rootProject.name
+    baseName = 'wafna'
     appendix = project.name
+    classifier = 'ALPHA'
     manifest {
-        attributes('SHA': gitHead, 'DESC': gitDescribeInfo)
+        attributes(
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version,            
+            'SHA': gitHead, 
+            'DESC': gitDescribeInfo)
     }
 }
 tasks.withType(ScalaCompile) {
