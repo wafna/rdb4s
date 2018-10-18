@@ -1,6 +1,8 @@
-package wafna.rdb4s.test
+package wafna.rdb4s.test.cp
+
 import org.scalatest.FlatSpec
 import wafna.rdb4s.db.{ConnectionPool, DBPromise}
+import wafna.rdb4s.test.{ConnectionPoolEventCounter, HSQL}
 
 import scala.concurrent.duration._
 class TestSQL extends FlatSpec {

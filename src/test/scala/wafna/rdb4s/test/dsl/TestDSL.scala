@@ -5,7 +5,7 @@ import wafna.rdb4s.test.TestDB
 import wafna.rdb4s.test.TestDomain.{Company, User}
 import scala.concurrent.duration._
 class TestDSL extends FlatSpec {
-  "xql" should "create valid sql" in {
+  "dsl" should "create valid sql" in {
     val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(1).idleTimeout(1.second).maxQueueSize(10)
     TestDB(getClass.getCanonicalName, cpConfig) { db =>
       db.createSchema() reflect 1.second
@@ -33,7 +33,8 @@ class TestDSL extends FlatSpec {
         classOf[java.sql.SQLIntegrityConstraintViolationException],
         "Foreign key violation..")(
         intercept[CPReflectedException](
-          db.associate(99, 99) reflect 10.millis).getCause.getClass)
+          // The real cause is two levels deep. The next level down contains the SQL.
+          db.associate(99, 99) reflect 10.millis).getCause.getCause.getClass)
       // A premise of the joins, below.
       db.associate(0, 0) reflect 10.millis
       assertResult(

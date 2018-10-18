@@ -64,7 +64,7 @@ package object db {
       * @see java.sql.PreparedStatement.executeQuery
       */
     def query[T](sql: String, args: List[Any] = Nil)(extraction: Extraction[T]): List[T] =
-      bracket(prepareStatement(sql, args))(_.close) { stmt =>
+      try bracket(prepareStatement(sql, args))(_.close) { stmt =>
         bracket({
           try stmt.executeQuery()
           catch {
@@ -72,13 +72,18 @@ package object db {
               sys error s"${e.getMessage}\n-- SQL\n$sql\n--"
           }
         })(Option(_).foreach(_.close()))(r => new RSIterator(r).map(extraction).toList)
+      } catch {
+        case e: java.sql.SQLException => throw new RuntimeException(sql, e)
       }
     def query[T](q: (String, List[Any])): Extraction[T] => List[T] = query(q._1, q._2)
     /**
       * @see java.sql.PreparedStatement.executeUpdate
       */
     def mutate(sql: String, args: List[Any] = Nil): Int =
-      bracket(prepareStatement(sql, args))(_.close())(_.executeUpdate())
+      try bracket(prepareStatement(sql, args))(_.close())(_.executeUpdate())
+      catch {
+        case e: java.sql.SQLException => throw new RuntimeException(sql, e)
+      }
     def mutate(q: (String, List[Any])): Int = mutate(q._1, q._2)
     /**
       * Interpolates arguments into a prepared statement.
