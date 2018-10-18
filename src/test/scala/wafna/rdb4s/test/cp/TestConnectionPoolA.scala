@@ -1,11 +1,10 @@
 package wafna.rdb4s.test.cp
 import java.util.concurrent.atomic.AtomicInteger
-
 import org.scalatest.FlatSpec
 import wafna.rdb4s.db._
 import wafna.rdb4s.test.TestDB
-
 import scala.concurrent.duration._
+import scala.util.Try
 /**
   * One big test so that we can create a schema.
   */
@@ -29,12 +28,29 @@ class TestConnectionPoolA extends FlatSpec {
         threads.incrementAndGet()
       }
     }
-    val cpConfig = new ConnectionPool.Config().name("hdb")
+    val cpConfig = new ConnectionPool.Config()
+        .name("hdb")
+        .maxPoolSize(3).minPoolSize(3)
+        .idleTimeout(1.second).maxQueueSize(10)
+    TestDB(getClass.getCanonicalName, cpConfig) { _ =>
+      Thread sleep 250
+      assertResult(3)(threads.get())
+    }
+  }
+  "connection pool" should "wait at least the full time before timing out" in {
+    def timer[T](t: => T): (T, Long) = {
+      val t0 = System.currentTimeMillis()
+      val x = t
+      (x, System.currentTimeMillis() - t0)
+    }
+    val cpConfig = new ConnectionPool.Config()
+        .name("hdb")
         .maxPoolSize(3).minPoolSize(3)
         .idleTimeout(1.second).maxQueueSize(10)
     TestDB(getClass.getCanonicalName, cpConfig) { db =>
-      Thread sleep 250
-      assertResult(3)(threads.get())
+      Array(1, 10, 100, 1000) foreach { timeout =>
+        assert(timer(Try(db._tester_1(10.second) take timeout.millis))._2 >= timeout)
+      }
     }
   }
 }
