@@ -1,5 +1,4 @@
 package wafna.rdb4s.test
-
 import wafna.rdb4s.db._
 import wafna.rdb4s.dsl._
 import scala.concurrent.duration.{FiniteDuration, _}
@@ -93,7 +92,8 @@ class TestDB(db: HSQL.DB) {
     }).toList
   }
   def searchUser(s: String): DBPromise[List[User]] = db autoCommit { cx =>
-    cx.query(crud.user.selector.where(u.name like s))(crud.user.extractor)
+    // orderBy ensures we can make predictable assertions about result sets
+    cx.query(crud.user.selector.where(u.name like s).orderBy(u.id.asc))(crud.user.extractor)
   }
   def searchCompany(s: String): DBPromise[List[Company]] = db autoCommit { cx =>
     cx.query(crud.company.selector.where(c.name like s))(crud.company.extractor)
