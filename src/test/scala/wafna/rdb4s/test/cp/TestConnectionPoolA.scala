@@ -15,7 +15,7 @@ class TestConnectionPoolA extends FlatSpec {
     TestDB(getClass.getCanonicalName, cpConfig) { db =>
       db.createSchema() reflect 1.second
       db.insertUsers(List("Flippy", "Hambone")) reflect 1.second
-      assertThrows[CPTimeoutException](db.usersById(List(0)) reflect 1.millis)
+      assertThrows[CPException.Timeout](db.usersById(List(0)) reflect 1.millis)
       Iterator
           .continually(db.usersById(List(0)))
           .take(100)

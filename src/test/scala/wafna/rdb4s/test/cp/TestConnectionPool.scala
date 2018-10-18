@@ -1,7 +1,8 @@
 package wafna.rdb4s.test.cp
 import org.scalatest.FlatSpec
-import wafna.rdb4s.db.{ConnectionPool, ConnectionPoolListener, CPTimeoutException}
+import wafna.rdb4s.db.{ConnectionPool, ConnectionPoolListener, CPException}
 import wafna.rdb4s.test.TestDB
+
 import scala.concurrent.duration._
 class TestConnectionPool extends FlatSpec {
   object ConnectionPoolListenerConsole extends ConnectionPoolListener {
@@ -30,7 +31,7 @@ class TestConnectionPool extends FlatSpec {
     Array(1, 3, 20) foreach { poolSize =>
       val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(poolSize).idleTimeout(1.second).maxQueueSize(10)
       TestDB(getClass.getCanonicalName, cpConfig) { db =>
-        assertThrows[CPTimeoutException](db._tester_1(100.millis) reflect 10.millis)
+        assertThrows[CPException.Timeout](db._tester_1(100.millis) reflect 10.millis)
       }
     }
   }

@@ -1,12 +1,13 @@
 package wafna.rdb4s.test.dsl
 import org.scalatest.FlatSpec
+import wafna.rdb4s
 import wafna.rdb4s.db._
 import wafna.rdb4s.test.TestDB
 import wafna.rdb4s.test.TestDomain.{Company, User}
 import scala.concurrent.duration._
 class TestDSL extends FlatSpec {
   "dsl" should "create valid sql" in {
-    val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(1).idleTimeout(1.second).maxQueueSize(10)
+    val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(1).idleTimeout(1.second).maxQueueSize(1000)
     TestDB(getClass.getCanonicalName, cpConfig) { db =>
       db.createSchema() reflect 1.second
       // Some data.  We'll use the fact that the array index and the entity id will be identical.
@@ -32,7 +33,7 @@ class TestDSL extends FlatSpec {
       assertResult(
         classOf[java.sql.SQLIntegrityConstraintViolationException],
         "Foreign key violation..")(
-        intercept[CPReflectedException](
+        intercept[CPException.Reflected](
           // The real cause is two levels deep. The next level down contains the SQL.
           db.associate(99, 99) reflect 10.millis).getCause.getCause.getClass)
       // A premise of the joins, below.
@@ -45,14 +46,20 @@ class TestDSL extends FlatSpec {
         db.fetchAssociatedNames() reflect 1.second)
       assertResult(
         userNames.zipWithIndex.toList.map(r => User(r._2, r._1)))(
-        db.usersById(userNames.indices.toList) reflect 10.millis)
+        db.usersById(userNames.indices.toList) reflect 1.second)
       val newName = "Sherlock"
-      db.updateUser(0, newName) reflect 10.millis
-      assertResult(List(User(0, newName)))(db.usersById(List(0)) reflect 10.millis)
+      db.updateUser(0, newName) reflect 1.second
+      assertResult(List(User(0, newName)))(db.usersById(List(0)) reflect 1.second)
       // Test that the timeout mechanism works.
-      // todo verify that the time elapsed looks like the indicated timeout.
-      assertThrows[CPTimeoutException](
-        db._tester_1(1.second) reflect 10.millis)
+      Iterator.continually(rdb4s.bracket(System.currentTimeMillis()) { t0 =>
+        // Asserts that when we timeout we didn't take much longer than the indicated time limit.
+        // 10ms should be way more than enough.  The point is to ensure we didn't wait for the task to
+        // actually execute.
+        assert(t0 + 10 >= System.currentTimeMillis())
+      } { _ =>
+        assertThrows[CPException.Timeout](
+          db._tester_1(1.second) reflect 0.millis)
+      }).take(100).toArray
     }
   }
 }

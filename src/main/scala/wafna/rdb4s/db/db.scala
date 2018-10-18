@@ -1,7 +1,7 @@
 package wafna.rdb4s
 import java.sql.{ResultSet, SQLSyntaxErrorException}
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.TimeoutException
+import wafna.rdb4s
 import scala.annotation.tailrec
 import scala.concurrent.duration._
 import scala.reflect.ClassTag
@@ -15,14 +15,34 @@ package object db {
   abstract class Database[D <: java.sql.Driver](implicit m: ClassTag[D]) {
     final val driverName: String = m.runtimeClass.getCanonicalName
   }
-  /**
-    * Points to where the promise is awaited along with the root cause.
-    */
-  class CPReflectedException(e: Throwable)
-      extends Exception(e)
-  class CPTimeoutException(timeout: FiniteDuration)
-      extends TimeoutException(s"Timeout exceeded: $timeout")
-  class CPTaskRejectedException(msg: String) extends Exception(msg)
+  abstract class CPException(msg: String, cause: Throwable) extends Exception(msg, cause) {
+    def this(msg: String) = this(msg, null)
+    def this(cause: Throwable) = this(null, cause)
+  }
+  object CPException {
+    /**
+      * Points to where the promise is awaited along with the root cause.
+      */
+    class Reflected(e: Throwable)
+        extends CPException(e)
+    /**
+      * Thrown by DBPromise when the timeout has expired.
+      */
+    class Timeout(timeout: FiniteDuration)
+        extends CPException(s"Timeout exceeded: $timeout")
+    /**
+      * Thrown by ConnectionPool when the queue is full.
+      */
+    class TaskRejected(msg: String)
+        extends CPException(msg)
+    /**
+      * Thrown by query and mutate in response to any exception thrown by the driver.
+      *
+      * @param sql The SQL being executed.
+      */
+    class SQLExecution(sql: String, cause: Throwable)
+        extends CPException(sql, cause)
+  }
   /**
     * Results deferred to future execution in the connection pool.
     */
@@ -30,7 +50,7 @@ package object db {
     self: DBPromise[T] =>
     def take(timeOut: FiniteDuration): Try[T]
     def reflect(timeOut: FiniteDuration): T =
-      take(timeOut).transform(Success(_), e => Failure(new CPReflectedException(e))).get
+      take(timeOut).transform(Success(_), e => Failure(new CPException.Reflected(e))).get
     def map[R](f: T => R): DBPromise[R] =
       (timeOut: FiniteDuration) => self.take(timeOut).map(f(_))
   }
@@ -65,15 +85,9 @@ package object db {
       */
     def query[T](sql: String, args: List[Any] = Nil)(extraction: Extraction[T]): List[T] =
       try bracket(prepareStatement(sql, args))(_.close) { stmt =>
-        bracket({
-          try stmt.executeQuery()
-          catch {
-            case e: SQLSyntaxErrorException =>
-              sys error s"${e.getMessage}\n-- SQL\n$sql\n--"
-          }
-        })(Option(_).foreach(_.close()))(r => new RSIterator(r).map(extraction).toList)
+        bracket(stmt.executeQuery())(Option(_).foreach(_.close()))(r => new RSIterator(r).map(extraction).toList)
       } catch {
-        case e: java.sql.SQLException => throw new RuntimeException(sql, e)
+        case e: Throwable => throw new CPException.SQLExecution(sql, e)
       }
     def query[T](q: (String, List[Any])): Extraction[T] => List[T] = query(q._1, q._2)
     /**
@@ -82,7 +96,7 @@ package object db {
     def mutate(sql: String, args: List[Any] = Nil): Int =
       try bracket(prepareStatement(sql, args))(_.close())(_.executeUpdate())
       catch {
-        case e: java.sql.SQLException => throw new RuntimeException(sql, e)
+        case e: Throwable => throw new CPException.SQLExecution(sql, e)
       }
     def mutate(q: (String, List[Any])): Int = mutate(q._1, q._2)
     /**
@@ -178,10 +192,6 @@ package object db {
     * Expresses the conversion of a row in a result set to a value.
     */
   type Extraction[T] = RSCursor => T
-  // Guards a resource.
-  private def bracket[R, T](resource: R)(dispose: R => Unit)(consume: R => T): T =
-    try consume(resource)
-    finally dispose(resource)
   /**
     * This forces clients to declare explicitly how they want transactions to be managed.
     */
@@ -277,12 +287,15 @@ package object db {
     def apply[R <: ConnectionRDB4S](config: ConnectionPool.Config, connectionManager: ConnectionManagerRDB4S[R])(
         borrow: ConnectionPool[R] => Unit)(implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit = {
       import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
-      val poolName = config.name.getOrElse(sys error "name required.")
-      val maxPoolSize = config.maxPoolSize.getOrElse(sys error "maxPoolSize required.")
-      val minPoolSize = config.minPoolSize.getOrElse(0)
+      val poolName = config.name getOrElse sys.error("name required.")
+      if (poolName.isEmpty) sys error s"poolName must be non-empty."
+      val maxPoolSize = config.maxPoolSize getOrElse sys.error("maxPoolSize required.")
+      if (1 > maxPoolSize) sys error s"maxPoolSize must be positive"
+      val minPoolSize = config.minPoolSize getOrElse 0
       if (minPoolSize > maxPoolSize) sys error s"minPoolSize ($minPoolSize) > maxPoolSize ($maxPoolSize)"
-      val idleTimeout = config.idleTimeout.getOrElse(sys error "idleTimeout required.")
-      val maxQueueSize = config.maxQueueSize.getOrElse(sys error "maxQueueSize required.")
+      val idleTimeout = config.idleTimeout getOrElse sys.error("idleTimeout required.")
+      val maxQueueSize = config.maxQueueSize getOrElse sys.error("maxQueueSize required.")
+      if (1 > maxQueueSize) sys error s"maxQueueSize must be positive"
       val active = new AtomicBoolean(true)
       val synch = new Object()
       val queue = new LinkedBlockingQueue[Task[_]]()
@@ -314,7 +327,7 @@ package object db {
             wait(remaining)
             remaining -= (System.currentTimeMillis() - t0)
           }
-          result.getOrElse(throw new CPTimeoutException(timeOut))
+          result.getOrElse(throw new CPException.Timeout(timeOut))
         }
       }
       class Task[T](val result: TaskResult[T], task: TransactionManager[R] => T) {
@@ -365,19 +378,22 @@ package object db {
         // The initial thread pool (reified by toArray).
         Iterator.continually(createThread()).take(minPoolSize).toArray
         borrow(new ConnectionPool[R] {
-          override def addTask[T](task: TransactionManager[R] => T): DBPromise[T] = if (!active.get)
-            throw new CPTaskRejectedException(s"ConnectionPool is shutting down: no tasks will be accepted.")
-          else {
-            val result = new TaskResult[T]()
-            // important to add the task before deciding whether to add a thread.
-            if (maxQueueSize > queue.size()) {
-              queue.put(new Task[T](result, task))
-              adjustThreadPool()
-              result
+          override def addTask[T](task: TransactionManager[R] => T): DBPromise[T] =
+            if (!active.get) {
+              // The only way this could happen is if you closed the connection pool (terrible idea) or contrived some
+              // way to hold it after the borrower method returned (even worse idea).
+              throw new CPException.TaskRejected(s"ConnectionPool is shutting down: no tasks will be accepted.")
             } else {
-              throw new CPTaskRejectedException(s"max queue size exceeded: $maxQueueSize")
+              val result = new TaskResult[T]()
+              // important to add the task before deciding whether to add a thread.
+              if (maxQueueSize <= queue.size()) {
+                throw new CPException.TaskRejected(s"max queue size exceeded: $maxQueueSize")
+              } else {
+                queue.put(new Task[T](result, task))
+                adjustThreadPool()
+                result
+              }
             }
-          }
         })
       } finally {
         active set false
