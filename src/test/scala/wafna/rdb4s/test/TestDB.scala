@@ -1,7 +1,8 @@
 package wafna.rdb4s.test
 import wafna.rdb4s.db._
+import wafna.rdb4s.db.RDB.DBPromise
 import wafna.rdb4s.dsl._
-import scala.concurrent.duration.{FiniteDuration, _}
+import scala.concurrent.duration.FiniteDuration
 /**
   * For tests.
   */

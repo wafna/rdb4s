@@ -1,9 +1,8 @@
 package wafna.rdb4s.test.cp
-
 import org.scalatest.FlatSpec
-import wafna.rdb4s.db.{ConnectionPool, DBPromise}
+import wafna.rdb4s.db.ConnectionPool
+import wafna.rdb4s.db.RDB.DBPromise
 import wafna.rdb4s.test.{ConnectionPoolEventCounter, HSQL}
-
 import scala.concurrent.duration._
 class TestSQL extends FlatSpec {
   "sdbc" should "execute SQL statements" in {

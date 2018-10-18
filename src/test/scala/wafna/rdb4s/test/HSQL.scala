@@ -1,10 +1,9 @@
 package wafna.rdb4s.test
 import wafna.rdb4s.db._
-import scala.concurrent.duration.Duration
 /**
   * An example of a Database adaptor.
   */
-object HSQL extends Database[org.hsqldb.jdbcDriver] {
+object HSQL extends RDB[org.hsqldb.jdbcDriver] {
   /**
     * A database is a pool of vendor specific connections.
     */
@@ -12,14 +11,14 @@ object HSQL extends Database[org.hsqldb.jdbcDriver] {
   /**
     * In here we put in any vendor specific functionality we want.
     */
-  class Connection(connection: JDBCConnection) extends ConnectionRDB4S(connection) {
+  class Connection(connection: JDBCConnection) extends RDB.Connection(connection) {
     def lastInsertId(): Int = query("CALL IDENTITY()", Nil)(_.int.get).head
   }
   /**
     * Construct this with whatever information you need to make a connection.
     * Parameterize on our connection type.
     */
-  class ConnectionManager(database: String) extends ConnectionManagerRDB4S[Connection] {
+  class ConnectionManager(database: String) extends RDB.ConnectionManager[Connection] {
     override def createConnection(): HSQL.Connection =
       new Connection(java.sql.DriverManager.getConnection(s"jdbc:hsqldb:mem:$database"))
   }
