@@ -73,6 +73,15 @@ class TestDB(db: HSQL.DB) {
         |  name VARCHAR(30)
         |)""".stripMargin, Nil)
     cx.mutate(
+      """CREATE TABLE stuff (
+        |  i INTEGER,
+        |  f FLOAT,
+        |  d DOUBLE,
+        |  b BOOLEAN,
+        |  c CHAR(32),
+        |  v VARCHAR(32)
+        |)""".stripMargin, Nil)
+    cx.mutate(
       """CREATE TABLE association (
         |  user_id INTEGER FOREIGN KEY REFERENCES user (id),
         |  company_id INTEGER FOREIGN KEY REFERENCES company (id)

@@ -85,14 +85,22 @@ package object dsl {
     def on(cond: Bool): Select =
       new Select(projection.fields, projection.table, new Join(table, cond, kind) :: projection.joins, None, Nil)
   }
-  sealed abstract trait Value
+  sealed trait Value
   object Value {
     case class QField(f: Field) extends Value
     // Literal refers to a query param since we never allow direct embedding of literals in SQL.
     case class Literal(v: Any) extends Value
     case class InList(list: List[Any]) extends Value
     object Null extends Value
+    object True extends Value
+    object False extends Value
   }
+  implicit def `Integer to Value`(i: Int): Value.Literal = Value.Literal(i)
+  implicit def `Long to Value`(i: Long): Value.Literal = Value.Literal(i)
+  implicit def `String to Value`(i: String): Value.Literal = Value.Literal(i)
+  implicit def `Float to Value`(i: Float): Value.Literal = Value.Literal(i)
+  implicit def `Double to Value`(i: Double): Value.Literal = Value.Literal(i)
+  implicit def `Boolean to Value`(i: Double): Value.Literal = Value.Literal(i)
   implicit class `Field comparisons`(val p: Field) {
     // RHS Field
     def ===(q: Field): Pred = Pred.EQ(Value.QField(p), Value.QField(q))
@@ -113,10 +121,6 @@ package object dsl {
     // Special RHSs
     def in(list: List[Any]): Pred = Pred.In(Value.QField(p), Value.InList(list))
     def like(q: String): Pred = Pred.Like(Value.QField(p), Value.Literal(q))
-    def ===(q: Int): Pred = Pred.EQ(Value.QField(p), Value.Literal(q))
-    def ===(q: Long): Pred = Pred.EQ(Value.QField(p), Value.Literal(q))
-    def ===(q: Double): Pred = Pred.EQ(Value.QField(p), Value.Literal(q))
-    def ===(q: String): Pred = Pred.EQ(Value.QField(p), Value.Literal(q))
   }
   implicit class `Value comparisons`(val p: Value) {
     // RHS Field
@@ -144,6 +148,8 @@ package object dsl {
     def ||(q: Bool): Bool = Bool.OR(p, q)
   }
   val NULL: Value = Value.Null
+  val TRUE: Value = Value.True
+  val FALSE: Value = Value.False
   def isNull(q: Field): Pred = Pred.IsNull(Value.QField(q))
   def isNotNull(q: Field): Pred = Pred.IsNotNull(Value.QField(q))
   abstract class Bool {
@@ -219,6 +225,8 @@ package object dsl {
     def value(v: Value)(implicit fn: FieldName): String = v match {
       case Value.QField(f) => fn(f)
       case Value.Null => "NULL"
+      case Value.True => "TRUE"
+      case Value.False => "FALSE"
       case Value.Literal(_) => "?"
       case Value.InList(list) => s"(${Array.fill(list.length)("?") mkString ", "})"
     }
