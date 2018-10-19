@@ -147,7 +147,7 @@ object ConnectionPool {
     try {
       listener.poolStart()
       // The initial thread pool (reified by toArray).
-      Iterator.continually(createThread()).take(minPoolSize).toArray
+      Iterator.continually(createThread()).take(minPoolSize) foreach identity
       borrow(new ConnectionPool[R] {
         override def addTask[T](task: TransactionManager[R] => T): DBPromise[T] =
           if (!active.get) {

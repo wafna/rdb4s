@@ -51,9 +51,9 @@ package object dsl {
     def outerJoin(joinTable: Table): JoinCondition = join(joinTable, Join.Outer)
     def leftJoin(joinTable: Table): JoinCondition = join(joinTable, Join.Left)
     def rightJoin(joinTable: Table): JoinCondition = join(joinTable, Join.Right)
+    // Repeated calls are ANDed together.
     def where(cond: Bool): Select =
-      if (where.isDefined) sys error "where clause already defined."
-      else new Select(fields, table, joins, Some(cond), order)
+      new Select(fields, table, joins, Some(where.map(w => Bool.AND(w, cond)).getOrElse(cond)), order)
     def orderBy(sortKeys: SortKey*): Select =
       if (order.nonEmpty) sys error "Ordering already defined."
       else new Select(fields, table, joins, where, sortKeys.toList)
@@ -271,6 +271,8 @@ package object dsl {
     def sql: (String, List[Any]) =
       (s"UPDATE ${table.tableName} SET ${fields.map(f => s"${f._1.name} = ?") mkString ", "} WHERE ${Show.bool(where)(Show.FieldNamePlain)}",
           fields.map(_._2) ++ Show.collectParams(Nil)(where).reverse)
+    // Repeated calls are ANDed together.
+    def where(cond: Bool): Update = new Update(table, fields, Bool.AND(where, cond))
   }
   // By not including a conversion to SQL we preclude accidental global updates.
   class UpdateWhere(table: Table, fields: List[(Field, Any)]) {

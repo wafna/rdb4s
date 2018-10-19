@@ -12,6 +12,9 @@ object TestDomain {
   case class Company(id: Int, name: String)
 }
 object TestDB {
+  trait Read[T] {
+    def read(rs: RSCursor => T)
+  }
   // Database tables.
   private class TUser(alias: String) extends Table("user", alias) {
     val id: TField = "id"
@@ -25,8 +28,6 @@ object TestDB {
     val userId: TField = "user_id"
     val companyId: TField = "company_id"
   }
-  private def checkUpdate(expectedRowCount: Int)(promise: DBPromise[Int]): DBPromise[Unit] =
-    promise.map(count => if (count != expectedRowCount) sys error s"Updated $count row(s) but expected $expectedRowCount row(s).")
   trait Crud[T] {
     val selector: Select
     def extractor(rs: RSCursor): T
@@ -65,12 +66,20 @@ class TestDB(db: HSQL.DB) {
     cx.mutate(
       """CREATE TABLE user (
         |  id INTEGER IDENTITY PRIMARY KEY,
-        |  name VARCHAR(30)
+        |  name VARCHAR(30) NOT NULL,
+        |  active BOOLEAN NOT NULL DEFAULT TRUE,
+        |  effective_date BIGINT DEFAULT now()
         |)""".stripMargin, Nil)
     cx.mutate(
       """CREATE TABLE company (
         |  id INTEGER IDENTITY PRIMARY KEY,
-        |  name VARCHAR(30)
+        |  name VARCHAR(30) NOT NULL,
+        |  active BOOLEAN NOT NULL
+        |)""".stripMargin, Nil)
+    cx.mutate(
+      """CREATE TABLE association (
+        |  user_id INTEGER FOREIGN KEY REFERENCES user (id),
+        |  company_id INTEGER FOREIGN KEY REFERENCES company (id)
         |)""".stripMargin, Nil)
     cx.mutate(
       """CREATE TABLE stuff (
@@ -80,11 +89,6 @@ class TestDB(db: HSQL.DB) {
         |  b BOOLEAN,
         |  c CHAR(32),
         |  v VARCHAR(32)
-        |)""".stripMargin, Nil)
-    cx.mutate(
-      """CREATE TABLE association (
-        |  user_id INTEGER FOREIGN KEY REFERENCES user (id),
-        |  company_id INTEGER FOREIGN KEY REFERENCES company (id)
         |)""".stripMargin, Nil)
   }
   def insertUsers(userNames: Iterable[String]): DBPromise[List[Int]] = db blockCommit { tx =>
@@ -122,9 +126,14 @@ class TestDB(db: HSQL.DB) {
         .innerJoin(u).on(a.companyId === u.id))(
       rs => (rs.string.get, rs.string.get))
   }
-  def updateUser(id: Int, name: String): DBPromise[Unit] = checkUpdate(1)(db autoCommit { cx =>
+  def companiesForUsers(userIds: List[Int]): DBPromise[List[(Int, Company)]] = db autoCommit {
+    _.query(
+      select(u.id, c.id, c.name).from(c).innerJoin(u).on(u.id === c.id).where(u.id in userIds))(
+      r => (r.int.get, crud.company.extractor(r)))
+  }
+  def updateUser(id: Int, name: String): DBPromise[Unit] = db autoCommit { cx =>
     cx.mutate(update(u)(u.name -> name).where(u.id === id.q))
-  })
+  } checkAffectedRows 1
   def usersById(ids: List[Int]): DBPromise[List[User]] = db autoCommit { cx =>
     // the descending sort on u.name has no effect; it's here to test orderBy.
     cx.query(crud.user.selector.where(u.id in ids).orderBy(u.id.asc, u.name.desc).sql)(crud.user.extractor)

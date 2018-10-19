@@ -31,6 +31,13 @@ object RDB {
   abstract class ConnectionManager[R <: Connection] {
     def createConnection(): R
   }
+  /**
+    * Checks the number of records affected by an update.
+    */
+  implicit class `check affected row count`(val promise: DBPromise[Int]) {
+    def checkAffectedRows(expectedRowCount: Int): DBPromise[Unit] =
+      promise.map(count => if (count != expectedRowCount) sys error s"Updated $count row(s) but expected $expectedRowCount row(s).")
+  }
   private object ConnectionRDB4S {
     /**
       * Iterate a ResultSet.
