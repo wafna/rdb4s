@@ -50,7 +50,7 @@ object RDB {
   /**
     * Vendor specific wrapper for a JDBC connection.
     */
-  abstract class Connection(protected[rdb4s] val connection: JDBCConnection)
+  abstract class Connection(private[rdb4s] val connection: JDBCConnection)
       extends AutoCloseable {
     import java.sql.{PreparedStatement, Timestamp}
     import ConnectionRDB4S._

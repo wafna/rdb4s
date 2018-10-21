@@ -15,12 +15,19 @@ object TestDB {
   trait Read[T] {
     def read(rs: RSCursor => T)
   }
+  trait ActiveRecord {
+    this: Table =>
+    val active: TField = "active"
+    val effectiveDate: TField = "effective_date"
+  }
   // Database tables.
-  private class TUser(alias: String) extends Table("user", alias) {
+  private class TUser(alias: String) extends Table("user", alias)
+      with ActiveRecord {
     val id: TField = "id"
     val name: TField = "name"
   }
-  private class TCompany(alias: String) extends Table("company", alias) {
+  private class TCompany(alias: String) extends Table("company", alias)
+      with ActiveRecord {
     val id: TField = "id"
     val name: TField = "name"
   }
@@ -50,9 +57,12 @@ object TestDB {
       def extractor(rs: RSCursor): Company = Company(rs.int.get, rs.string.get)
     }
   }
-  def apply(database: String, config: ConnectionPool.Config)(
+  /**
+    * Makes a database with a random UUID so that tests can be independent.
+    */
+  def apply(config: ConnectionPool.Config)(
       borrow: TestDB => Unit)(implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit =
-    HSQL(database, config)(db => borrow(new TestDB(db)))
+    HSQL(java.util.UUID.randomUUID().toString, config)(db => borrow(new TestDB(db)))
 }
 /**
   * Provides a schema and API for a test database.
@@ -67,14 +77,15 @@ class TestDB(db: HSQL.DB) {
       """CREATE TABLE user (
         |  id INTEGER IDENTITY PRIMARY KEY,
         |  name VARCHAR(30) NOT NULL,
-        |  active BOOLEAN NOT NULL DEFAULT TRUE,
-        |  effective_date BIGINT DEFAULT now()
+        |  active BOOLEAN NOT NULL,
+        |  effective_date BIGINT
         |)""".stripMargin, Nil)
     cx.mutate(
       """CREATE TABLE company (
         |  id INTEGER IDENTITY PRIMARY KEY,
         |  name VARCHAR(30) NOT NULL,
-        |  active BOOLEAN NOT NULL
+        |  active BOOLEAN NOT NULL,
+        |  effective_date BIGINT
         |)""".stripMargin, Nil)
     cx.mutate(
       """CREATE TABLE association (
@@ -94,14 +105,14 @@ class TestDB(db: HSQL.DB) {
   def insertUsers(userNames: Iterable[String]): DBPromise[List[Int]] = db blockCommit { tx =>
     // Do a bunch of stuff in one transaction.
     (userNames map { name =>
-      tx.mutate(insert(u)(u.name -> name))
+      tx.mutate(insert(u)(Array(u.name -> name, u.active -> true, u.effectiveDate -> System.currentTimeMillis())))
       tx.lastInsertId()
     }).toList
   }
   def insertCompanies(companyNames: Iterable[String]): DBPromise[List[Int]] = db blockCommit { tx =>
     // Do a bunch of stuff in one transaction.
     (companyNames map { name =>
-      tx.mutate(insert(c)(c.name -> name))
+      tx.mutate(insert(c)(Array(c.name -> name, c.active -> true, c.effectiveDate -> System.currentTimeMillis())))
       tx.lastInsertId()
     }).toList
   }
@@ -115,7 +126,7 @@ class TestDB(db: HSQL.DB) {
   // Uses map on promise to add assertion about the result.
   // Best to throw errors there rather than in the connection pool.
   def associate(userId: Int, companyId: Int): DBPromise[Unit] = db blockCommit { tx =>
-    tx.mutate(insert(a)(a.userId -> userId, a.companyId -> companyId))
+    tx.mutate(insert(a)(Array(a.userId -> userId, a.companyId -> companyId)))
   } map { count => if (1 != count) sys error s"Expected one record update, got $count" else Unit }
   def fetchAssociations(): DBPromise[List[(Int, Int)]] = db autoCommit { cx =>
     cx.query(select(a.userId, a.companyId).from(a))(rs => rs.int.get -> rs.int.get)
@@ -132,7 +143,7 @@ class TestDB(db: HSQL.DB) {
       r => (r.int.get, crud.company.extractor(r)))
   }
   def updateUser(id: Int, name: String): DBPromise[Unit] = db autoCommit { cx =>
-    cx.mutate(update(u)(u.name -> name).where(u.id === id.q))
+    cx.mutate(update(u)(Array(u.name -> name)).where(u.id === id.q))
   } checkAffectedRows 1
   def usersById(ids: List[Int]): DBPromise[List[User]] = db autoCommit { cx =>
     // the descending sort on u.name has no effect; it's here to test orderBy.

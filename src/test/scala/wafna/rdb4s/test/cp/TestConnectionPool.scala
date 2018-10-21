@@ -24,13 +24,13 @@ class TestConnectionPool extends FlatSpec {
   "connection pool" should "shut down cleanly immediately" in {
     Array(1, 3, 20) foreach { poolSize =>
       val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(poolSize).idleTimeout(1.second).maxQueueSize(10)
-      assertThrows[RuntimeException](TestDB(getClass.getCanonicalName, cpConfig) { _ => sys error "Barf!" })
+      assertThrows[RuntimeException](TestDB(cpConfig) { _ => sys error "Barf!" })
     }
   }
   "connection pool" should "shut down cleanly if the borrower barfs on timeout" in {
     Array(1, 3, 20) foreach { poolSize =>
       val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(poolSize).idleTimeout(1.second).maxQueueSize(10)
-      TestDB(getClass.getCanonicalName, cpConfig) { db =>
+      TestDB(cpConfig) { db =>
         assertThrows[CPException.Timeout](db._tester_1(100.millis) reflect 10.millis)
       }
     }
@@ -39,7 +39,7 @@ class TestConnectionPool extends FlatSpec {
     val timeout = 500.millis
     Array(1, 3, 20) foreach { poolSize =>
       val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(poolSize).idleTimeout(1.second).maxQueueSize(10)
-      TestDB(getClass.getCanonicalName, cpConfig) { db =>
+      TestDB(cpConfig) { db =>
         assertResult(poolSize)(
           Iterator
               // the duration should be long enough that we can submit them fast enough.

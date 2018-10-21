@@ -1,4 +1,5 @@
 package wafna.rdb4s
+import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 package object dsl {
   /**
@@ -282,15 +283,34 @@ package object dsl {
     def sql: (String, List[Any]) = (s"DELETE FROM ${table.tableName} WHERE ${Show.bool(where)(Show.FieldNamePlain)}",
         Show.collectParams(Nil)(where).reverse)
   }
+  implicit class `param list concat head`(val p: (Field, Any)) {
+    def ?(q: (Field, Any)): ArrayBuffer[(Field, Any)] = {
+      val b= new ArrayBuffer[(Field, Any)](20)
+      b append p
+      b append q
+      b
+    }
+  }
+  implicit class `param list concat tail`(val p: ArrayBuffer[(Field, Any)]) {
+    def ?(q: (Field, Any)): ArrayBuffer[(Field, Any)] = {
+      p append q
+      p
+    }
+  }
+  implicit def `param to param list`(p: (Field, Any)): ArrayBuffer[(Field, Any)] = {
+    val b = new ArrayBuffer[(Field, Any)]
+    b append p
+    b
+  }
   /**
-    * Provides conversion to SQL string.
+    * Provides conversion to SQL string plus parameters.
     */
   implicit def `show sql`(showSQL: ShowSQL): (String, List[Any]) = showSQL.sql
   def select(fields: Field*): SelectFields =
     new SelectFields(fields.toSeq)
-  def insert(table: Table)(fields: (Field, Any)*): Insert =
+  def insert(table: Table)(fields: Seq[(Field, Any)]): Insert =
     new Insert(table, fields.toList.map(f => f._1 -> Value.Literal(f._2)))
-  def update(table: Table)(fields: (Field, Any)*): UpdateWhere =
+  def update(table: Table)(fields: Seq[(Field, Any)]): UpdateWhere =
     new UpdateWhere(table, fields.toList)
   def delete(table: Table)(where: Bool): Delete =
     new Delete(table, where)
