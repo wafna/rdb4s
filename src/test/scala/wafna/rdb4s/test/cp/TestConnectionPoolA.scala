@@ -9,7 +9,7 @@ import scala.util.Try
   * One big test so that we can create a schema.
   */
 class TestConnectionPoolA extends FlatSpec {
-  "connection pool" should "pass a bunch of tests" in {
+  "connection pool" should "recover after timeout" in {
     val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(3).idleTimeout(1.second).maxQueueSize(10)
     TestDB(cpConfig) { db =>
       db.createSchema() reflect 1.second

@@ -61,7 +61,8 @@ object TestDB {
     * Makes a database with a random UUID so that tests can be independent.
     */
   def apply(config: ConnectionPool.Config)(
-      borrow: TestDB => Unit)(implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit =
+      borrow: TestDB => Unit)(
+      implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit =
     HSQL(java.util.UUID.randomUUID().toString, config)(db => borrow(new TestDB(db)))
 }
 /**

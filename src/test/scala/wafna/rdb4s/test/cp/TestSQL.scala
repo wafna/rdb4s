@@ -5,7 +5,7 @@ import wafna.rdb4s.db.RDB.DBPromise
 import wafna.rdb4s.test.{ConnectionPoolEventCounter, HSQL}
 import scala.concurrent.duration._
 class TestSQL extends FlatSpec {
-  "sdbc" should "execute SQL statements" in {
+  "rdb" should "execute SQL statements" in {
     implicit val listener: ConnectionPoolEventCounter = new ConnectionPoolEventCounter
     val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(1).idleTimeout(1.second).maxQueueSize(10000)
     ConnectionPool[HSQL.Connection](cpConfig,
