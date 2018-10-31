@@ -12,6 +12,8 @@ class TestDSL extends FlatSpec {
         .name("hdb")
         .maxPoolSize(1)
         .idleTimeout(1.second)
+        .connectionTestCycleLength(2.second)
+        .connectionTestTimeout(1)
         .maxQueueSize(1000)
     class TWidget(alias: String) extends Table("widget", alias) {
       val id: TField = "id"
@@ -42,7 +44,9 @@ class TestDSL extends FlatSpec {
     val cpConfig = new ConnectionPool.Config()
         .name("hdb")
         .maxPoolSize(1)
-        .idleTimeout(1.second)
+        .idleTimeout(10.second)
+        .connectionTestCycleLength(2.second)
+        .connectionTestTimeout(1)
         .maxQueueSize(1000)
     TestDB(cpConfig) { db =>
       db.createSchema() reflect 1.second
@@ -97,5 +101,48 @@ class TestDSL extends FlatSpec {
           db._tester_1(1.second) reflect 0.millis)
       }).take(100) foreach identity
     }
+  }
+  "dsl" should "emit literal sql" in {
+    import rdb4s.dsl._
+    class Thing(alias: String) extends Table("something", alias) {
+      val id: TField = "id"
+      val name: TField = "name"
+      val rank: TField = "rank"
+      val serialNumber: TField = "serial_number"
+    }
+    implicit class Straighten(s: String) {
+      def straighten(): String = s.replaceAll("[\r\n]+", " ").replaceAll("\\s+", " ").trim
+    }
+    object thing1 extends Thing("a")
+    object thing2 extends Thing("b")
+    object thing3 extends Thing("c")
+    assertResult(
+      """SELECT a.id, a.name, b.id, b.name
+        |FROM something a
+        |INNER JOIN something b ON (a.id = b.id)
+        |WHERE (a.id = ?)""".stripMargin.straighten())(
+      select(thing1.id, thing1.name, thing2.id, thing2.name).from(thing1)
+          .innerJoin(thing2).on(thing1.id === thing2.id)
+          .where(thing1.id === 11)._1.straighten())
+    assertResult(
+      """SELECT a.id, a.name, a.rank, a.serial_number
+        |FROM something a
+        |INNER JOIN something b ON (a.id = b.id)
+        |INNER JOIN something c ON (c.id = b.id)
+        |WHERE (a.id = ?)""".stripMargin.straighten())(
+      select(thing1.id, thing1.name, thing1.rank, thing1.serialNumber).from(thing1)
+          .innerJoin(thing2).on(thing1.id === thing2.id)
+          .innerJoin(thing3).on(thing3.id === thing2.id)
+          .where(thing1.id === 11)._1.straighten())
+    assertResult(
+      """SELECT a.id, a.name, a.rank, a.serial_number
+        |FROM something a
+        |INNER JOIN something b ON (a.id = b.id)
+        |INNER JOIN something c ON (c.id = b.id)
+        |WHERE ((a.id = ?) AND (b.id = ?))""".stripMargin.straighten())(
+      select(thing1.id, thing1.name, thing1.rank, thing1.serialNumber).from(thing1)
+          .innerJoin(thing2).on(thing1.id === thing2.id)
+          .innerJoin(thing3).on(thing3.id === thing2.id)
+          .where((thing1.id === 11) && (thing2.id === 99))._1.straighten())
   }
 }

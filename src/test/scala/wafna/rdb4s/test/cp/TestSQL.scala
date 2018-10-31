@@ -7,7 +7,11 @@ import scala.concurrent.duration._
 class TestSQL extends FlatSpec {
   "rdb" should "execute SQL statements" in {
     implicit val listener: ConnectionPoolEventCounter = new ConnectionPoolEventCounter
-    val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(1).idleTimeout(1.second).maxQueueSize(10000)
+    val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(1)
+        .idleTimeout(1.second)
+        .connectionTestCycleLength(1.second)
+        .connectionTestTimeout(1)
+        .maxQueueSize(10000)
     ConnectionPool[HSQL.Connection](cpConfig,
       new HSQL.ConnectionManager("sdbc")) { db =>
       val timeout = 500.millis

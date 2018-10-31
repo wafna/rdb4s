@@ -10,7 +10,11 @@ import scala.util.Try
   */
 class TestConnectionPoolA extends FlatSpec {
   "connection pool" should "recover after timeout" in {
-    val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(3).idleTimeout(1.second).maxQueueSize(10)
+    val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(3)
+        .idleTimeout(1.second)
+        .connectionTestCycleLength(2.second)
+        .connectionTestTimeout(1)
+        .maxQueueSize(10)
     TestDB(cpConfig) { db =>
       db.createSchema() reflect 1.second
       db.insertUsers(List("Flippy", "Hambone")) reflect 1.second
@@ -31,7 +35,10 @@ class TestConnectionPoolA extends FlatSpec {
     val cpConfig = new ConnectionPool.Config()
         .name("hdb")
         .maxPoolSize(3).minPoolSize(3)
-        .idleTimeout(1.second).maxQueueSize(10)
+        .idleTimeout(1.second)
+        .connectionTestCycleLength(2.second)
+        .connectionTestTimeout(1)
+        .maxQueueSize(10)
     TestDB(cpConfig) { _ =>
       Thread sleep 250
       assertResult(3)(threads.get())
@@ -46,7 +53,10 @@ class TestConnectionPoolA extends FlatSpec {
     val cpConfig = new ConnectionPool.Config()
         .name("hdb")
         .maxPoolSize(3).minPoolSize(3)
-        .idleTimeout(1.second).maxQueueSize(10)
+        .idleTimeout(1.second)
+        .connectionTestCycleLength(2.second)
+        .connectionTestTimeout(1)
+        .maxQueueSize(10)
     TestDB(cpConfig) { db =>
       Array(1, 10, 100, 1000) foreach { timeout =>
         assert(timer(Try(db._tester_1(10.second) take timeout.millis))._2 >= timeout)

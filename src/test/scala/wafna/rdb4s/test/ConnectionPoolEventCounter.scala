@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import com.codahale.metrics.{Meter, MetricRegistry}
 import wafna.rdb4s.db.ConnectionPoolListener
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 object ConnectionPoolEventCounter {
   // For testing en masse.
   case class ConnectionPoolEventCounts(poolStart: Boolean, poolStop: Boolean, taskStart: Long, taskStop: Long, threadStart: Long, threadStop: Long)
@@ -29,8 +29,8 @@ class ConnectionPoolEventCounter extends ConnectionPoolListener {
   val _threadStop: Meter = metrics meter "threadStop"
   override def poolStart(): Unit = if (_poolStart.get()) sys error "poolStart" else _poolStart set true
   override def poolStop(queueSize: Int): Unit = if (_poolStop.get()) sys error "poolStop" else _poolStop set true
-  override def taskStart(queueSize: Int, timeInQueue: Duration): Unit = _taskStart.mark()
-  override def taskStop(queueSize: Int, timeToExecute: Duration): Unit = _taskStop.mark()
+  override def taskStart(queueSize: Int, timeInQueue: FiniteDuration): Unit = _taskStart.mark()
+  override def taskStop(queueSize: Int, timeToExecute: FiniteDuration): Unit = _taskStop.mark()
   override def threadStart(threadPoolSize: Int): Unit = _threadStart.mark()
   override def threadStop(threadPoolSize: Int): Unit = _threadStop.mark()
   def getCounts: ConnectionPoolEventCounts =

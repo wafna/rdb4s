@@ -11,9 +11,9 @@ class TestConnectionPool extends FlatSpec {
       spew("pool start")
     override def poolStop(queueSize: Int): Unit =
       spew(s"pool stop: queue size = $queueSize")
-    override def taskStart(queueSize: Int, timeInQueue: Duration): Unit =
+    override def taskStart(queueSize: Int, timeInQueue: FiniteDuration): Unit =
       spew(s"task start: queue size = $queueSize, wait time: $timeInQueue, thread = ${Thread.currentThread().getName}")
-    override def taskStop(queueSize: Int, timeToExecute: Duration): Unit =
+    override def taskStop(queueSize: Int, timeToExecute: FiniteDuration): Unit =
       spew(s"task stop: queue size = $queueSize, wait time: $timeToExecute, thread = ${Thread.currentThread().getName}")
     override def threadStart(threadPoolSize: Int): Unit =
       spew(s"thread start: pool size = $threadPoolSize, thread = ${Thread.currentThread().getName}")
@@ -29,7 +29,11 @@ class TestConnectionPool extends FlatSpec {
   }
   "connection pool" should "shut down cleanly if the borrower barfs on timeout" in {
     Array(1, 3, 20) foreach { poolSize =>
-      val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(poolSize).idleTimeout(1.second).maxQueueSize(10)
+      val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(poolSize)
+          .idleTimeout(1.second)
+          .connectionTestCycleLength(2.second)
+          .connectionTestTimeout(1)
+          .maxQueueSize(10)
       TestDB(cpConfig) { db =>
         assertThrows[CPException.Timeout](db._tester_1(100.millis) reflect 10.millis)
       }
@@ -38,7 +42,12 @@ class TestConnectionPool extends FlatSpec {
   "connection pool" should "run exactly the maximum number of threads when saturated" in {
     val timeout = 500.millis
     Array(1, 3, 20) foreach { poolSize =>
-      val cpConfig = new ConnectionPool.Config().name("hdb").maxPoolSize(poolSize).idleTimeout(1.second).maxQueueSize(10)
+      val cpConfig = new ConnectionPool.Config().name("hdb")
+          .maxPoolSize(poolSize)
+          .idleTimeout(1.second)
+          .connectionTestCycleLength(2.second)
+          .connectionTestTimeout(1)
+          .maxQueueSize(10)
       TestDB(cpConfig) { db =>
         assertResult(poolSize)(
           Iterator
