@@ -194,7 +194,11 @@ package object dsl {
       def collectValue(v: Value, args: List[Any]): List[Any] = {
         v match {
           case Value.Literal(a) => a :: args
-          case Value.InList(list) => list.toList ++ args
+          case Value.InList(list) =>
+            // This would otherwise cause a syntax error and would evaluate to false, anyway.
+            if (1 > list.size)
+              throw new IllegalArgumentException("In lists must be of positive size.")
+            list.toList ++ args
           case _ => args
         }
       }
