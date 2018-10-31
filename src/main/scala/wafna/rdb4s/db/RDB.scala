@@ -55,6 +55,8 @@ object RDB {
     import java.sql.{PreparedStatement, Timestamp}
     import ConnectionRDB4S._
     override protected[rdb4s] def close(): Unit = connection.close()
+    // todo use this to test and retain idle connections
+    def isValid(timeout: Int):Boolean = connection isValid timeout
     /**
       * @see java.sql.PreparedStatement.executeQuery
       */
