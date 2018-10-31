@@ -91,7 +91,7 @@ package object dsl {
     case class QField(f: Field) extends Value
     // Literal refers to a query param since we never allow direct embedding of literals in SQL.
     case class Literal(v: Any) extends Value
-    case class InList(list: List[Any]) extends Value
+    case class InList(list: Seq[Any]) extends Value
     object Null extends Value
     object True extends Value
     object False extends Value
@@ -120,7 +120,7 @@ package object dsl {
     def >=(q: Value): Pred = Pred.GTE(Value.QField(p), q)
     def like(q: Value): Pred = Pred.Like(Value.QField(p), q)
     // Special RHSs
-    def in(list: List[Any]): Pred = Pred.In(Value.QField(p), Value.InList(list))
+    def in(list: Seq[Any]): Pred = Pred.In(Value.QField(p), Value.InList(list))
     def like(q: String): Pred = Pred.Like(Value.QField(p), Value.Literal(q))
   }
   implicit class `Value comparisons`(val p: Value) {
@@ -194,7 +194,7 @@ package object dsl {
       def collectValue(v: Value, args: List[Any]): List[Any] = {
         v match {
           case Value.Literal(a) => a :: args
-          case Value.InList(list) => list ++ args
+          case Value.InList(list) => list.toList ++ args
           case _ => args
         }
       }
