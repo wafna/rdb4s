@@ -93,9 +93,8 @@ class TestDSL extends FlatSpec {
       // Test that the timeout mechanism works.
       Iterator.continually(rdb4s.bracket(System.currentTimeMillis()) { t0 =>
         // Asserts that when we timeout we didn't take much longer than the indicated time limit.
-        // 10ms should be way more than enough; the point is to ensure we didn't wait for the task to
-        // actually execute.
-        assert(t0 + 10 >= System.currentTimeMillis())
+        // 20ms should be enough; the point is to ensure we didn't wait for the task to actually execute.
+        assert(t0 + 20 >= System.currentTimeMillis())
       } { _ =>
         assertThrows[CPException.Timeout](
           db._tester_1(1.second) reflect 0.millis)
@@ -144,5 +143,8 @@ class TestDSL extends FlatSpec {
           .innerJoin(thing2).on(thing1.id === thing2.id)
           .innerJoin(thing3).on(thing3.id === thing2.id)
           .where((thing1.id === 11) && (thing2.id === 99))._1.straighten())
+    assertResult("""UPDATE something SET rank = (rank + ?) WHERE (id = ?)""".straighten())(
+      update(thing1)(thing1.rank -> (thing1.rank.! + 66)).where(thing1.id === 99)._1.straighten()
+    )
   }
 }

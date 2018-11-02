@@ -144,7 +144,7 @@ class TestDB(db: HSQL.DB) {
       r => (r.int.get, crud.company.extractor(r)))
   }
   def updateUser(id: Int, name: String): DBPromise[Unit] = db autoCommit { cx =>
-    cx.mutate(update(u)(Array(u.name -> name)).where(u.id === id.q))
+    cx.mutate(update(u)(u.name -> name).where(u.id === id.q))
   } checkAffectedRows 1
   def usersById(ids: List[Int]): DBPromise[List[User]] = db autoCommit { cx =>
     // the descending sort on u.name has no effect; it's here to test orderBy.
