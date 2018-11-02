@@ -1,8 +1,6 @@
 package wafna.rdb4s.db
 import java.sql.ResultSet
-
 import wafna.rdb4s.bracket
-
 import scala.concurrent.duration.FiniteDuration
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
@@ -56,7 +54,7 @@ object RDB {
     import ConnectionRDB4S._
     override protected[rdb4s] def close(): Unit = connection.close()
     // todo use this to test and retain idle connections
-    def isValid(timeout: Int):Boolean = connection isValid timeout
+    def isValid(timeout: Int): Boolean = connection isValid timeout
     /**
       * @see java.sql.PreparedStatement.executeQuery
       */
@@ -116,8 +114,11 @@ object RDB {
                 else sys error s"Unhandled NULL data type: $cn"
               )
             case _ =>
+              val className = try value.getClass.getCanonicalName catch {
+                case _: Throwable => value.getClass.toString
+              }
               sys.error(
-                s"Unhandled data type in prepared statement: ${value.toString} [${value.getClass.getCanonicalName}}]"
+                s"Unhandled data type in prepared statement: ${value.toString} [$className}]"
               )
           }
       }
