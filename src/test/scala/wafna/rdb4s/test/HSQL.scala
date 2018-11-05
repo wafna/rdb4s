@@ -12,7 +12,7 @@ object HSQL extends RDB[org.hsqldb.jdbcDriver] {
     * In here we put in any vendor specific functionality we want.
     */
   class Connection(connection: JDBCConnection) extends RDB.Connection(connection) {
-    def lastInsertId(): Int = query("CALL IDENTITY()", Nil)(_.int.!).head
+    def lastInsertId(): Int = query("CALL IDENTITY()", Nil)(_.int.get).head
   }
   /**
     * Construct this with whatever information you need to make a connection.

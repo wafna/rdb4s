@@ -1,8 +1,11 @@
 package wafna.rdb4s.test.nestedset
+import java.util.UUID
+
 import wafna.rdb4s.db.ConnectionPool
 import wafna.rdb4s.db.RDB.Connection
 import wafna.rdb4s.dsl._
 import wafna.rdb4s.test.HSQL
+
 import scala.concurrent.duration._
 object NestedSetDB {
   // The nesting position.
@@ -35,8 +38,7 @@ object NestedSetDB {
     val dbConfig = new ConnectionPool.Config().name("nested-set")
         .connectionTestTimeout(0).connectionTestCycleLength(1.hour)
         .idleTimeout(1.hour).maxQueueSize(1000).maxPoolSize(4).minPoolSize(1)
-    // The random bit is to prevent unit tests from colliding.
-    HSQL(s"nested-set-${java.util.UUID.randomUUID()}", dbConfig) { db =>
+    HSQL(s"nested-set-${UUID.randomUUID().toString}", dbConfig) { db =>
       db blockCommit { tx =>
         Array(
           """create table node (
@@ -66,12 +68,12 @@ class NestedSetDB private(db: HSQL.DB) {
   def fetchNodes(ids: Seq[Int]): List[Node] = db autoCommit { cx =>
     cx.query(
       select(n.id, n.name).from(n).where(n.id in ids))(
-      r => Node(r.int.!, r.string.!))
+      r => Node(r.int.get, r.string.get))
   } reflect timeout
   def setParent(childNode: Int, parentNode: Int): Unit =
     db.blockCommit(__setParent(childNode, parentNode)(_)) reflect timeout
   def setRoot(nodeId: Int): Unit = db blockCommit { tx =>
-    tx.query(select(nt.nodeId).from(nt).where(nt.left === 1))(rs => sys error s"Root node already exists at ${rs.int.!}")
+    tx.query(select(nt.nodeId).from(nt).where(nt.left === 1))(rs => sys error s"Root node already exists at ${rs.int.get}")
     tx.mutate(insert(nt)(nt.nodeId -> nodeId, nt.left -> 1, nt.right -> 2))
   }
   private def __setParent(childNode: Int, parentNode: Int)(implicit tx: HSQL.Connection): Int = {
@@ -83,10 +85,10 @@ class NestedSetDB private(db: HSQL.DB) {
   def bounds(nodeId: Int)(implicit cx: HSQL.Connection): NPos =
     cx.query(
       select(nt.left, nt.right).from(nt).where(nt.nodeId === nodeId))(
-      r => NPos(r.int.!, r.int.!))
+      r => NPos(r.int.get, r.int.get))
         .headOption getOrElse sys.error(s"Node $nodeId is an orphan.")
   def rightMost()(implicit cx: HSQL.Connection): Int =
-    cx.query(select(nt.right).from(nt).where(nt.left === 1))(_.int.!).head
+    cx.query(select(nt.right).from(nt).where(nt.left === 1))(_.int.get).head
   /**
     * This is the question we want to answer with maximum efficiency.
     */
@@ -99,7 +101,7 @@ class NestedSetDB private(db: HSQL.DB) {
               .where((nt.left < left) && (nt.right > right))
               // order desc so that the head of the list is nearest ancestor.
               .orderBy(nt.left.desc))(
-          r => Node(r.int.!, r.string.!))
+          r => Node(r.int.get, r.string.get))
     }
   } reflect timeout
   // Computes the transitive closure from a node.
@@ -114,7 +116,7 @@ class NestedSetDB private(db: HSQL.DB) {
               // The sort order is very important!
               // We're essentially folding from the right, building the tree from the bottom.
               .orderBy(nt.left.desc)) { r =>
-          val np = NodePos(Node(r.int.!, r.string.!), NPos(r.int.!, r.int.!))
+          val np = NodePos(Node(r.int.get, r.string.get), NPos(r.int.get, r.int.get))
           childrenStack.span(p => np.pos.contains(p._1)) match {
             case (children, others) =>
               childrenStack = (np.pos, NSTree(np.node, children.map(_._2))) :: others
@@ -163,7 +165,7 @@ class NestedSetDB private(db: HSQL.DB) {
           .innerJoin(nt).on(n.id === nt.nodeId)
           // this ordering gives us recursive descent.
           .orderBy(nt.left.asc)) { r =>
-      val np = NodePos(Node(r.int.!, r.string.!), NPos(r.int.!, r.int.!))
+      val np = NodePos(Node(r.int.get, r.string.get), NPos(r.int.get, r.int.get))
       def setIndent(): Unit = {
         nodeStack.headOption foreach { case NodePos(_, NPos(_, right)) =>
           if (np.pos.right < right) indent += 1

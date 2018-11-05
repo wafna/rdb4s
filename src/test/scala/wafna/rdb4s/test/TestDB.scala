@@ -50,11 +50,11 @@ object TestDB {
     import TestDomain._
     object user extends Crud[User] {
       val selector: Select = select(u.id, u.name).from(u)
-      def extractor(rs: RSCursor): User = User(rs.int.!, rs.string.!)
+      def extractor(rs: RSCursor): User = User(rs.int.get, rs.string.get)
     }
     object company extends Crud[Company] {
       val selector: Select = select(c.id, c.name).from(c)
-      def extractor(rs: RSCursor): Company = Company(rs.int.!, rs.string.!)
+      def extractor(rs: RSCursor): Company = Company(rs.int.get, rs.string.get)
     }
   }
   /**
@@ -106,14 +106,14 @@ class TestDB(db: HSQL.DB) {
   def insertUsers(userNames: Iterable[String]): DBPromise[List[Int]] = db blockCommit { tx =>
     // Do a bunch of stuff in one transaction.
     (userNames map { name =>
-      tx.mutate(insert(u)(Array(u.name -> name, u.active -> true, u.effectiveDate -> System.currentTimeMillis())))
+      tx.mutate(insert(u)(u.name -> name, u.active -> true, u.effectiveDate -> System.currentTimeMillis()))
       tx.lastInsertId()
     }).toList
   }
   def insertCompanies(companyNames: Iterable[String]): DBPromise[List[Int]] = db blockCommit { tx =>
     // Do a bunch of stuff in one transaction.
     (companyNames map { name =>
-      tx.mutate(insert(c)(Array(c.name -> name, c.active -> true, c.effectiveDate -> System.currentTimeMillis())))
+      tx.mutate(insert(c)(c.name -> name, c.active -> true, c.effectiveDate -> System.currentTimeMillis()))
       tx.lastInsertId()
     }).toList
   }
@@ -127,21 +127,21 @@ class TestDB(db: HSQL.DB) {
   // Uses map on promise to add assertion about the result.
   // Best to throw errors there rather than in the connection pool.
   def associate(userId: Int, companyId: Int): DBPromise[Unit] = db blockCommit { tx =>
-    tx.mutate(insert(a)(Array(a.userId -> userId, a.companyId -> companyId)))
+    tx.mutate(insert(a)(a.userId -> userId, a.companyId -> companyId))
   } map { count => if (1 != count) sys error s"Expected one record update, got $count" else Unit }
   def fetchAssociations(): DBPromise[List[(Int, Int)]] = db autoCommit { cx =>
-    cx.query(select(a.userId, a.companyId).from(a))(rs => rs.int.! -> rs.int.!)
+    cx.query(select(a.userId, a.companyId).from(a))(rs => rs.int.get -> rs.int.get)
   }
   def fetchAssociatedNames(): DBPromise[List[(String, String)]] = db autoCommit { cx =>
     cx.query(select(u.name, c.name).from(a)
         .innerJoin(c).on(a.companyId === c.id)
         .innerJoin(u).on(a.companyId === u.id))(
-      rs => (rs.string.!, rs.string.!))
+      rs => (rs.string.get, rs.string.get))
   }
   def companiesForUsers(userIds: List[Int]): DBPromise[List[(Int, Company)]] = db autoCommit {
     _.query(
       select(u.id, c.id, c.name).from(c).innerJoin(u).on(u.id === c.id).where(u.id in userIds))(
-      r => (r.int.!, crud.company.extractor(r)))
+      r => (r.int.get, crud.company.extractor(r)))
   }
   def updateUser(id: Int, name: String): DBPromise[Unit] = db autoCommit { cx =>
     cx.mutate(update(u)(u.name -> name).where(u.id === id.q))

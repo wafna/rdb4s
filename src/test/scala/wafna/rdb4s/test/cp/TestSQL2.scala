@@ -3,7 +3,7 @@ import org.scalatest.FlatSpec
 import wafna.rdb4s.db.{ConnectionPool, ConnectionPoolListener}
 import wafna.rdb4s.test.HSQL
 import scala.concurrent.duration._
-class TestSQL2 extends FlatSpec{
+class TestSQL2 extends FlatSpec {
   "dsl-HSQL" should "create valid sql" in {
     import wafna.rdb4s.dsl._
     val cpConfig = new ConnectionPool.Config()
@@ -29,12 +29,12 @@ class TestSQL2 extends FlatSpec{
             |  active BOOLEAN NOT NULL,
             |  effective_date BIGINT
             |)""".stripMargin)
-        tx.mutate(insert(w)((w.name, "thingy") ? (w.active, true) ? (w.effectiveDate, System.currentTimeMillis())))
+        tx.mutate(insert(w)(w.name -> "thingy", w.active -> true, w.effectiveDate -> System.currentTimeMillis()))
       } reflect 1.second
       assertResult(1)((db autoCommit {
         _.query(
           select(w.id, w.name, w.active, w.effectiveDate).from(w).where(w.name === "thingy"))(
-          r => (r.int.!, r.string.!, r.bool.!, r.long.!))
+          r => (r.int.get, r.string.get, r.bool.get, r.long.get))
       } reflect 1.second).length)
     }(ConnectionPoolListener)
   }
