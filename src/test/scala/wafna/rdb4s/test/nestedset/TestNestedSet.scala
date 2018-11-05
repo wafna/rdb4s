@@ -2,6 +2,8 @@ package wafna.rdb4s.test.nestedset
 
 import org.scalatest.FlatSpec
 import wafna.rdb4s.test.nestedset.NestedSetDB.Node
+
+import scala.util.Random
 class TestNestedSet extends FlatSpec {
   def makeNodes(names: Seq[String])(implicit db: NestedSetDB): List[Node] = {
     val ids = names map db.createNode
@@ -16,6 +18,8 @@ class TestNestedSet extends FlatSpec {
     assertResult(expected.length)(ancestors.length)
     assert(expected.zip(ancestors.reverse).forall(x => x._1.id == x._2.id))
   }
+  def setRoot(node: Node)(implicit db: NestedSetDB): Unit =
+    db.setRoot(node.id)
   def setParent(child: Node, parent: Node)(implicit db: NestedSetDB): Unit =
     db.setParent(child.id, parent.id)
   "nested set" should "work and stuff" in {
@@ -31,8 +35,9 @@ class TestNestedSet extends FlatSpec {
               assertAncestors(n)(as: _*)
             }
           }
-          setParent(b, a)
+          setRoot(a)
           assertNewAncestors(a)()
+          setParent(b, a)
           assertNewAncestors(b)(a)
           setParent(c, a)
           assertNewAncestors(c)(a)
@@ -41,24 +46,24 @@ class TestNestedSet extends FlatSpec {
           // move d -> c
           db.moveNode(d.id, c.id)
           assertAncestors(d)(a, c)
-          db showNS "----- MOVE d -> c"
+          // db showNS "----- MOVE d -> c"
           // move d -> b
           db.moveNode(d.id, b.id)
           assertAncestors(a)()
           assertAncestors(b)(a)
           assertAncestors(c)(a)
           assertAncestors(d)(a, b)
-          db showNS "----- MOVE d -> b"
+          // db showNS "----- MOVE d -> b"
           // move d -> a
           db.moveNode(d.id, a.id)
           assertAncestors(a)()
           assertAncestors(b)(a)
           assertAncestors(c)(a)
           assertAncestors(d)(a)
-          db showNS "----- MOVE d -> a"
+          // db showNS "----- MOVE d -> a"
           setParent(e, b)
           db.moveNode(b.id, c.id)
-          db showNS "----- MOVE b -> c"
+        // db showNS "----- MOVE b -> c"
         case _ =>
           sys error "wat"
       }
@@ -66,6 +71,7 @@ class TestNestedSet extends FlatSpec {
   }
   "nested set" should "perform many mutations" in {
     NestedSetDB { implicit db =>
+        Iterator.continually(Random.nextInt)
       makeNodes(List("a", "b", "c", "d", "e", "f", "g", "h", "i")) match {
         case List(a, b, c, d, e, f, g, h, i) =>
           // As we build the tree we record all the previous tests of ancestry
@@ -77,8 +83,9 @@ class TestNestedSet extends FlatSpec {
               assertAncestors(n)(as: _*)
             }
           }
-          setParent(b, a)
+          setRoot(a)
           assertNewAncestors(a)()
+          setParent(b, a)
           assertNewAncestors(b)(a)
           setParent(c, b)
           assertNewAncestors(c)(a, b)

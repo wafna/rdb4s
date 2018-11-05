@@ -369,7 +369,7 @@ package object dsl {
   implicit def `show sql`(showSQL: ShowSQL): (String, List[Any]) = showSQL.sql
   def select(fields: Field*): SelectFields =
     new SelectFields(fields.toSeq)
-  def insert(table: Table)(fields: Seq[(Field, Any)]): Insert =
+  def insert(table: Table)(fields: (Field, Any)*): Insert =
     new Insert(table, fields.toList.map(f => f._1 -> Value.Literal(f._2)))
   def update(table: Table)(fields: (Field, Value)*): UpdateWhere =
     new UpdateWhere(table, fields.toList)

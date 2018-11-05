@@ -14,8 +14,8 @@ class RSCursor(val rs: ResultSet) {
     if (rs.wasNull) None else Some(v)
   }
   abstract class Type[T](f: Int => T) {
-    def get: T = next(f)
-    def opt: Option[T] = maybe(f)
+    def !(): T = next(f)
+    def ?(): Option[T] = maybe(f)
   }
   object int extends Type[Int](rs.getInt)
   object long extends Type[Long](rs.getLong)

@@ -15,7 +15,7 @@ class TestSQL extends FlatSpec {
     ConnectionPool[HSQL.Connection](cpConfig,
       new HSQL.ConnectionManager("sdbc")) { db =>
       val timeout = 500.millis
-      assertResult(42)(db.autoCommit(_.query("SELECT ? FROM INFORMATION_SCHEMA.SYSTEM_USERS", List(42))(_.int.get).head) reflect timeout)
+      assertResult(42)(db.autoCommit(_.query("SELECT ? FROM INFORMATION_SCHEMA.SYSTEM_USERS", List(42))(_.int.!).head) reflect timeout)
       val widgetNames = List("Sprocket", "Cog", "Tappet")
       val value: DBPromise[Seq[Int]] = db blockCommit { tx =>
         tx.mutate(
@@ -33,7 +33,7 @@ class TestSQL extends FlatSpec {
         value reflect timeout)
       assertResult(widgetNames.zipWithIndex.map(p => p._2 -> p._1),
         "recover all the widgets that were inserted")(
-        db.autoCommit(_.query("SELECT id, name FROM widget ORDER BY id", Nil)(r => (r.int.get, r.string.get))) reflect timeout)
+        db.autoCommit(_.query("SELECT id, name FROM widget ORDER BY id", Nil)(r => (r.int.!, r.string.!))) reflect timeout)
     }
     // ensure all the listener methods got called as expected.
     assertResult(

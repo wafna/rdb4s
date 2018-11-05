@@ -34,7 +34,7 @@ class TestSQL2 extends FlatSpec{
       assertResult(1)((db autoCommit {
         _.query(
           select(w.id, w.name, w.active, w.effectiveDate).from(w).where(w.name === "thingy"))(
-          r => (r.int.get, r.string.get, r.bool.get, r.long.get))
+          r => (r.int.!, r.string.!, r.bool.!, r.long.!))
       } reflect 1.second).length)
     }(ConnectionPoolListener)
   }
