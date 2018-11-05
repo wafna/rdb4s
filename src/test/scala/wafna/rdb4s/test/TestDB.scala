@@ -13,7 +13,7 @@ object TestDomain {
 }
 object TestDB {
   trait Read[T] {
-    def read(rs: RSCursor => T)
+    def read(rs: RowCursor => T)
   }
   trait ActiveRecord {
     this: Table =>
@@ -37,7 +37,7 @@ object TestDB {
   }
   trait Crud[T] {
     val selector: Select
-    def extractor(rs: RSCursor): T
+    def extractor(rs: RowCursor): T
   }
   // Tables with aliases for the SQL, below.
   private final val u = new TUser("u")
@@ -50,11 +50,11 @@ object TestDB {
     import TestDomain._
     object user extends Crud[User] {
       val selector: Select = select(u.id, u.name).from(u)
-      def extractor(rs: RSCursor): User = User(rs.int.get, rs.string.get)
+      def extractor(rs: RowCursor): User = User(rs.int.get, rs.string.get)
     }
     object company extends Crud[Company] {
       val selector: Select = select(c.id, c.name).from(c)
-      def extractor(rs: RSCursor): Company = Company(rs.int.get, rs.string.get)
+      def extractor(rs: RowCursor): Company = Company(rs.int.get, rs.string.get)
     }
   }
   /**

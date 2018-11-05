@@ -1,11 +1,9 @@
 package wafna.rdb4s.test.nestedset
 import java.util.UUID
-
 import wafna.rdb4s.db.ConnectionPool
 import wafna.rdb4s.db.RDB.Connection
 import wafna.rdb4s.dsl._
 import wafna.rdb4s.test.HSQL
-
 import scala.concurrent.duration._
 object NestedSetDB {
   // The nesting position.
@@ -87,8 +85,6 @@ class NestedSetDB private(db: HSQL.DB) {
       select(nt.left, nt.right).from(nt).where(nt.nodeId === nodeId))(
       r => NPos(r.int.get, r.int.get))
         .headOption getOrElse sys.error(s"Node $nodeId is an orphan.")
-  def rightMost()(implicit cx: HSQL.Connection): Int =
-    cx.query(select(nt.right).from(nt).where(nt.left === 1))(_.int.get).head
   /**
     * This is the question we want to answer with maximum efficiency.
     */

@@ -40,9 +40,9 @@ object RDB {
     /**
       * Iterate a ResultSet.
       */
-    class RSIterator(rs: ResultSet) extends Iterator[RSCursor]() {
+    class RSIterator(rs: ResultSet) extends Iterator[RowCursor]() {
       override def hasNext: Boolean = rs.next()
-      override def next(): RSCursor = new RSCursor(rs)
+      override def next(): RowCursor = new RowCursor(rs)
     }
   }
   /**

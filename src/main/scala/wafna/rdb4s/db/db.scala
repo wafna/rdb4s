@@ -14,7 +14,7 @@ package object db {
   /**
     * Expresses the conversion of a row in a result set to a value.
     */
-  type Extraction[T] = RSCursor => T
+  type Extraction[T] = RowCursor => T
   /**
     * Checks the number of records affected by an update (postfix notation).
     */
