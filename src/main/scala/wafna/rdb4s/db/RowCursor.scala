@@ -1,27 +1,19 @@
 package wafna.rdb4s.db
 import java.sql.ResultSet
-object RowCursor {
-  implicit class `row cursor field operators`[T](val t: RowCursor.Type) {
-  def !(): T = r.get
-  def ?(): Option[T] = r.opt
-}
-  abstract class Type[T](f: Int => T) {
-    def get: T = next(f)
-    def opt: Option[T] = maybe(f)
-  }
-
-}
 /**
   * Pulls values in sequence from ResultSet, obviating the need to remember indices.
   */
 class RowCursor(val rs: ResultSet) {
-  import RowCursor._
   private var nth = 0
-  @inline private def next[T](f: Int => T): T = {
+  @inline final private def next[T](f: Int => T): T = {
     nth += 1
     f(nth)
   }
-  @inline private def maybe[T](f: Int => T): Option[T] = {
+  abstract class Type[T](f: Int => T) {
+    def get: T = next(f)
+    def opt: Option[T] = maybe(f)
+  }
+  @inline final private def maybe[T](f: Int => T): Option[T] = {
     val v = next(f)
     if (rs.wasNull) None else Some(v)
   }
