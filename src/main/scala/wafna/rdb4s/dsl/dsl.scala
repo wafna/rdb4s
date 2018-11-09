@@ -235,42 +235,11 @@ package object dsl {
       case OR(p, q) => collectCondParams(p) ++ collectCondParams(q)
       case NOT(p) => collectCondParams(p)
     }
-/*
-    def collectParams(args: List[Any])(cond: Bool): List[Any] = {
-      import Pred._
-      import Bool._
-      def collectValue(v: Value, args: List[Any]): List[Any] = {
-        v match {
-          case Value.Literal(a) => a :: args
-          case Value.InList(list) =>
-            // This would otherwise cause a syntax error and would evaluate to false, anyway.
-            if (1 > list.size)
-              throw new IllegalArgumentException("In lists must be of positive size.")
-            list.toList ++ args
-          case Value.ADD(p, q) => collectValue(p, collectValue(q, args))
-          case Value.SUB(p, q) => collectValue(p, collectValue(q, args))
-          case Value.MUL(p, q) => collectValue(p, collectValue(q, args))
-          case Value.DIV(p, q) => collectValue(p, collectValue(q, args))
-          case _ => args
-        }
-      }
-      cond match {
-        case c: Pred => c match {
-          case EQ(p, q) => collectValue(p, collectValue(q, args))
-          case NEQ(p, q) => collectValue(p, collectValue(q, args))
-          case LT(p, q) => collectValue(p, collectValue(q, args))
-          case LTE(p, q) => collectValue(p, collectValue(q, args))
-          case GT(p, q) => collectValue(p, collectValue(q, args))
-          case GTE(p, q) => collectValue(p, collectValue(q, args))
-          case Like(p, q) => collectValue(p, collectValue(q, args))
-          case In(p, q) => collectValue(p, collectValue(q, args))
-        }
-        case AND(p, q) => collectParams(collectParams(args)(p))(q)
-        case OR(p, q) => collectParams(collectParams(args)(p))(q)
-        case NOT(p) => collectParams(args)(p)
-      }
-    }
-*/
+    /**
+      * Because we always use aliased tables in updates and queries we need to indicate
+      * whether to use the base name or qualified name when we emit the SQL.
+      * Otherwise, we'd need to have different logic for printing essentially the same stuff.
+      */
     sealed trait FieldName {
       def apply(field: Field): String
     }
