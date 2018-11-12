@@ -3,29 +3,23 @@ import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 package object dsl {
   /**
-    * The name of the field in the schema.
+    * The name of a field in a relation.
     */
   abstract class Field(val name: String) {
     /**
       * The qualified name when the field is in an aliased table.
       */
     def qname: String
+    def as(alias: String): Selection
   }
-  /**
-    * A model for the names of columns in a table.
-    *
-    * @param tableName The name in the schema.
-    * @param alias     The name in the query.
-    */
-  abstract class Table(val tableName: String, alias: String) {
-    implicit def `string to field`(fieldName: String): TField = field(fieldName)
-    private var fields = Set[String]()
+  // Every relation has an alias.
+  abstract class Relation(val alias: String) {
     case class TField protected(fieldName: String) extends Field(fieldName) {
       override def qname: String = s"$alias.$name"
+      override def as(alias: String): Selection = Selection(TableFunction(this), Some(alias))
     }
-    /**
-      * Defines a table field.
-      */
+    implicit def `String to Field`(fieldName: String): TField = field(fieldName)
+    private var fields = Set[String]()
     protected[this] def field(name: String): TField = {
       val f = TField(name)
       if (fields contains name)
@@ -35,33 +29,41 @@ package object dsl {
         f
       }
     }
-    def qname: String = s"$tableName $alias"
   }
+  class SubQuery(val select: Select, alias: String) extends Relation(alias)
+  implicit class `Select to Relation`(val s: Select) {
+    def as(alias: String): SubQuery = new SubQuery(s, alias)
+  }
+  abstract class Table(val tableName: String, alias: String) extends Relation(alias)
   /**
     * Intermediate syntactic element.
     */
-  class SelectFields(val fields: Seq[Field]) {
-    def from(table: Table): Select = new Select(fields, table, Nil, None, Nil)
+  class SelectFields(val selections: Seq[Selection]) {
+    def from(tables: Relation*): Select = new Select(selections, tables, Nil, None, Nil, Nil, None)
   }
   /**
     * A SELECT statement.
     */
-  class Select(val fields: Seq[Field], val table: Table, val joins: List[Join], where: Option[Bool], order: List[SortKey]) extends ShowSQL {
-    def join(joinTable: Table, kind: JoinKind = Join.Inner): JoinCondition = new JoinCondition(this, joinTable, kind)
-    def innerJoin(joinTable: Table): JoinCondition = join(joinTable, Join.Inner)
-    def outerJoin(joinTable: Table): JoinCondition = join(joinTable, Join.Outer)
-    def leftJoin(joinTable: Table): JoinCondition = join(joinTable, Join.Left)
-    def rightJoin(joinTable: Table): JoinCondition = join(joinTable, Join.Right)
+  class Select(val selections: Seq[Selection], val tables: Seq[Relation], val joins: List[Join], where: Option[Bool], order: List[SortKey], group: List[Field], limit: Option[Int]) extends ShowSQL {
+    def join(joinTable: Relation, kind: JoinKind = Join.Inner): JoinCondition = new JoinCondition(this, joinTable, kind)
+    def innerJoin(joinTable: Relation): JoinCondition = join(joinTable, Join.Inner)
+    def outerJoin(joinTable: Relation): JoinCondition = join(joinTable, Join.Outer)
+    def leftJoin(joinTable: Relation): JoinCondition = join(joinTable, Join.Left)
+    def rightJoin(joinTable: Relation): JoinCondition = join(joinTable, Join.Right)
     // Repeated calls are ANDed together.
     def where(cond: Bool): Select =
-      new Select(fields, table, joins, Some(where.map(w => Bool.AND(w, cond)).getOrElse(cond)), order)
+      new Select(selections, tables, joins, Some(where.map(w => Bool.AND(w, cond)).getOrElse(cond)), order, group, limit)
     def orderBy(sortKeys: SortKey*): Select =
       if (order.nonEmpty) sys error "Ordering already defined."
-      else new Select(fields, table, joins, where, sortKeys.toList)
+      else new Select(selections, tables, joins, where, sortKeys.toList, group, limit)
+    def groupBy(grouping: Field*): Select =
+      new Select(selections, tables, joins, where, order, group ++ grouping.toList, limit)
+    def limit(n: Int): Select =
+      new Select(selections, tables, joins, where, order, group, Some(n))
     def sql: (String, List[Any]) = {
       val sql = stringWriter { w =>
-        w println s"SELECT ${fields.map(_.qname).mkString(", ")}"
-        w println s"FROM ${table.qname}"
+        w println s"SELECT ${selections.map(Show.selection) mkString ", "}"
+        w println s"FROM ${tables.map(Show.showRelation) mkString ", "}"
         // reverse preserves the syntactic order.
         joins.reverse foreach { j =>
           w println Show.join(j)
@@ -69,6 +71,9 @@ package object dsl {
         where foreach { c => w println s"WHERE ${Show.bool(c)(Show.FieldNameFQ)}" }
         if (order.nonEmpty) {
           w println s"ORDER BY ${order map Show.sortKey mkString ", "}"
+        }
+        if (group.nonEmpty) {
+          w println s"GROUP BY ${group.map(_.qname) mkString ", "}"
         }
       }
       (sql, where.map(Show.collectCondParams) getOrElse Nil)
@@ -81,10 +86,10 @@ package object dsl {
     case object Left extends JoinKind
     case object Right extends JoinKind
   }
-  case class Join(table: Table, cond: Bool, kind: JoinKind)
-  class JoinCondition(projection: Select, table: Table, kind: JoinKind) {
+  case class Join(table: Relation, cond: Bool, kind: JoinKind)
+  class JoinCondition(projection: Select, table: Relation, kind: JoinKind) {
     def on(cond: Bool): Select =
-      new Select(projection.fields, projection.table, new Join(table, cond, kind) :: projection.joins, None, Nil)
+      new Select(projection.selections, projection.tables, new Join(table, cond, kind) :: projection.joins, None, Nil, Nil, None)
   }
   sealed trait Value
   object Value {
@@ -105,7 +110,7 @@ package object dsl {
   implicit def `String to Value`(i: String): Value.Literal = Value.Literal(i)
   implicit def `Float to Value`(i: Float): Value.Literal = Value.Literal(i)
   implicit def `Double to Value`(i: Double): Value.Literal = Value.Literal(i)
-  implicit def `Boolean to Value`(i: Double): Value.Literal = Value.Literal(i)
+  implicit def `Boolean to Value`(i: Boolean): Value.Literal = Value.Literal(i)
   /**
     * This is needed to coerce a field to a value for arithmetic that already requires
     * implicits to implement.
@@ -178,10 +183,19 @@ package object dsl {
     def unary_! = Bool.NOT(this)
   }
   object Bool {
+    // A literal boolean value.
+    case class BOOL(b: Boolean) extends Bool
     case class NOT(b: Bool) extends Bool
     case class AND(p: Bool, q: Bool) extends Bool
     case class OR(p: Bool, q: Bool) extends Bool
   }
+  /**
+    * Embeds literal booleans.
+    */
+  implicit def `boolean to bool`(b: Boolean): Bool.BOOL = Bool.BOOL(b)
+  /**
+    * Predicate
+    */
   abstract class Pred extends Bool
   object Pred {
     case class EQ(p: Value, q: Value) extends Pred
@@ -209,8 +223,21 @@ package object dsl {
     def sql: (String, List[Any])
   }
   private object Show {
-    import Pred._
     import Bool._
+    import Pred._
+    def selection(s: Selection): String = s"${function(s.f)}${s.name.map(n => s" as $n") getOrElse ""}"
+    def showRelation(t: Relation): String = t match {
+      case ts: SubQuery => s"(${ts.select.sql}) ${ts.alias}"
+      case t: Table => s"${t.tableName} ${t.alias}"
+    }
+    def function(f: Function): String = f match {
+      case TableFunction(field) => field.qname
+      case a: AggregateFunction => a match {
+        case Max(q) => s"MAX(${function(q)})"
+        case Min(q) => s"MIN(${function(q)})"
+        case Avg(q) => s"AVG(${function(q)})"
+      }
+    }
     def collectValueParams(arg: Value): List[Any] = arg match {
       case Value.Literal(x) => List(x)
       case Value.InList(x) => x.toList
@@ -283,7 +310,7 @@ package object dsl {
         case Join.Left => "LEFT"
         case Join.Right => "RIGHT"
       }
-      s"$k JOIN ${j.table.qname} ON ${bool(j.cond)(FieldNameFQ)}"
+      s"$k JOIN ${showRelation(j.table)} ON ${bool(j.cond)(FieldNameFQ)}"
     }
     def sortKey(sk: SortKey): String = {
       val dir = sk.direction match {
@@ -333,11 +360,32 @@ package object dsl {
     b
   }
   /**
+    * Functions generate values with the most trivial being a field reference.
+    */
+  sealed abstract class Function
+  case class TableFunction(field: Field) extends Function
+  implicit def `field to table function`(field: Field): TableFunction = TableFunction(field)
+  sealed abstract class AggregateFunction extends Function
+  case class Max(f: Function) extends AggregateFunction
+  case class Min(f: Function) extends AggregateFunction
+  case class Avg(f: Function) extends AggregateFunction
+  implicit class `field aggregate functions`(f: Field) {
+    def max: Max = Max(f)
+    def min: Min = Min(f)
+    def avg: Avg = Avg(f)
+  }
+  case class Selection(f: Function, name: Option[String])
+  implicit def `Anonymous Function to Selection`(f: Function): Selection = Selection(f, None)
+  implicit def `Field to Selection`(f: Field): Selection = Selection(TableFunction(f), None)
+  implicit class `Function to Selection`(val f: Function) {
+    def as(name: String): Selection = Selection(f, Some(name))
+  }
+  /**
     * Provides conversion to SQL string plus parameters.
     */
   implicit def `show sql`(showSQL: ShowSQL): (String, List[Any]) = showSQL.sql
-  def select(fields: Field*): SelectFields =
-    new SelectFields(fields.toSeq)
+  def select(selections: Selection*): SelectFields =
+    new SelectFields(selections.toSeq)
   def insert(table: Table)(fields: (Field, Any)*): Insert =
     new Insert(table, fields.toList.map(f => f._1 -> Value.Literal(f._2)))
   def update(table: Table)(fields: (Field, Value)*): UpdateWhere =
