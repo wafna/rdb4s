@@ -1,4 +1,7 @@
 package wafna.rdb4s
+import java.sql.Time
+import java.util.{Date, UUID}
+
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 package object dsl {
@@ -65,26 +68,6 @@ package object dsl {
       new Select(selections, tables, joins, whereClause, order, group ++ grouping.toList, limit)
     def limit(n: Int): Select =
       new Select(selections, tables, joins, whereClause, order, group, Some(n))
-/*
-    def sql: (String, List[Any]) = {
-      val sql = stringWriter { w =>
-        w println s"SELECT ${selections.map(Show.selection) mkString ", "}"
-        w println s"FROM ${tables.map(Show.showRelation) mkString ", "}"
-        // reverse preserves the syntactic order.
-        joins.reverse foreach { j =>
-          w println Show.join(j)
-        }
-        whereClause foreach { c => w println s"WHERE ${Show.bool(c)(Show.FieldNameFQ)}" }
-        if (order.nonEmpty) {
-          w println s"ORDER BY ${order map Show.sortKey mkString ", "}"
-        }
-        if (group.nonEmpty) {
-          w println s"GROUP BY ${group.map(_.qname) mkString ", "}"
-        }
-      }
-      (sql, whereClause.map(Show.collectCondParams) getOrElse Nil)
-    }
-*/
   }
   sealed abstract class JoinKind
   object Join {
@@ -99,7 +82,7 @@ package object dsl {
       new Select(projection.selections, projection.tables, new Join(table, cond, kind) :: projection.joins, None, Nil, Nil, None)
   }
   sealed trait Value
-  sealed abstract class ArithBinOp(val p: Value, val q: Value) extends Value
+  sealed abstract class ArithmeticBinaryOp(val p: Value, val q: Value) extends Value
   object Value {
     case class QField(f: Field) extends Value
     // Literal refers to a query param since we never allow direct embedding of literals in SQL.
@@ -108,27 +91,29 @@ package object dsl {
     object Null extends Value
     object True extends Value
     object False extends Value
-    case class ADD(override val p: Value, override val q: Value) extends ArithBinOp(p, q)
-    case class SUB(override val p: Value, override val q: Value) extends ArithBinOp(p, q)
-    case class MUL(override val p: Value, override val q: Value) extends ArithBinOp(p, q)
-    case class DIV(override val p: Value, override val q: Value) extends ArithBinOp(p, q)
+    case class ADD(override val p: Value, override val q: Value) extends ArithmeticBinaryOp(p, q)
+    case class SUB(override val p: Value, override val q: Value) extends ArithmeticBinaryOp(p, q)
+    case class MUL(override val p: Value, override val q: Value) extends ArithmeticBinaryOp(p, q)
+    case class DIV(override val p: Value, override val q: Value) extends ArithmeticBinaryOp(p, q)
   }
-
+  // Allowing embedding of values in SQL...
   implicit def `Integer to Value`(i: Int): Value.Literal = Value.Literal(i)
   implicit def `Long to Value`(i: Long): Value.Literal = Value.Literal(i)
   implicit def `String to Value`(i: String): Value.Literal = Value.Literal(i)
   implicit def `Float to Value`(i: Float): Value.Literal = Value.Literal(i)
   implicit def `Double to Value`(i: Double): Value.Literal = Value.Literal(i)
   implicit def `Boolean to Value`(i: Boolean): Value.Literal = Value.Literal(i)
+  implicit def `UUID to Value`(i: UUID): Value.Literal = Value.Literal(i)
+  implicit def `Time to Value`(i: Time): Value.Literal = Value.Literal(i)
+  implicit def `Date to Value`(i: Date): Value.Literal = Value.Literal(i)
   /**
     * This is needed to coerce a field to a value for arithmetic that already requires
     * implicits to implement.
     */
-  implicit class `Field to Value`(i: Field) {
-    // Pronounced 'dammit!'.
+  implicit class `Field to Value Explicit`(i: Field) {
     def !(): Value.QField = Value.QField(i)
   }
-  implicit class `String to Value Dammit`(i: String) {
+  implicit class `String to Value Explicit`(i: String) {
     def !(): Value.Literal = Value.Literal(i)
   }
   implicit class `Value arithmetic`(val p: Value) {
@@ -274,7 +259,6 @@ package object dsl {
   /**
     * Provides conversion to SQL string plus parameters.
     */
-  // implicit def `show sql`(showSQL: ShowSQL): (String, List[Any]) = showSQL.sql
   def select(selections: Selection*): SelectFields =
     new SelectFields(selections.toSeq)
   def insert(table: Table)(fields: (Field, Any)*): Insert =

@@ -26,6 +26,8 @@ class RowCursor(val rs: ResultSet) {
   object byte extends Type[Byte](rs.getByte)
   object date extends Type[java.sql.Date](rs.getDate)
   object timestamp extends Type[java.sql.Timestamp](rs.getTimestamp)
+  object obj extends Type[Object](rs.getObject)
+  object uuid extends Type[java.util.UUID](i => rs.getObject(i).asInstanceOf[java.util.UUID])
   def getDoubleArray: scala.Array[Double] = next { i =>
     rs.getArray(i).getArray.asInstanceOf[scala.Array[_]] map { d =>
       d.asInstanceOf[Double]
