@@ -34,8 +34,10 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     sql print s"INSERT INTO ${i.table.tableName} (${i.fields.map(_._1.name) mkString ", "}) VALUES (${List.fill(i.fields.size)("?") mkString ", "})"
     params ++= i.fields.map(_._2.v)
   }
-  def showDelete(d: Delete): Unit =
-    sql print s"DELETE FROM ${d.table.tableName} WHERE ${showBool(d.where)(FieldNamePlain)}"
+  def showDelete(d: Delete): Unit = {
+    sql print s"DELETE FROM ${d.table.tableName} WHERE "
+    showBool(d.where)(FieldNamePlain)
+  }
   def showSelection(s: Selection): Unit = {
     showFunction(s.f)
     s.name foreach { n =>
@@ -63,9 +65,7 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
       intercalate(s.whereClause.toList.map(Some(_)), None) foreach {
         case None => " AND "
         case Some(e) =>
-          sql print "("
           showBool(e)(FieldNameFQ)
-          sql print ")"
       }
     }
     if (s.order.nonEmpty) {
