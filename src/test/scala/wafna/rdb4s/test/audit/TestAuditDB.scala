@@ -38,15 +38,14 @@ class TestAuditDB extends FlatSpec {
       }
       // 'Binky' is acceptable here because it's a discarded name.
       db.createUser("Binky").timeout
-      // 'Bongo' is rejected here because it's the latest in use.
-      intercept[CPException.Reflected](db.createUser("Bongo").timeout)
       db.getUsers(List(rabbitId)).timeout match {
         case u :: Nil =>
-          assertResult(AuditPK(2,1,2))(u.key)
+          assertResult(AuditPK(2,1,1))(u.key)
         case w => fail(s"Expected one record, got $w")
       }
+      // 'Bongo' is rejected here because it's the latest in use.
+      intercept[CPException.Reflected](db.createUser("Bongo").timeout)
       db.deleteUser(rabbitId).timeout
-      // db.dumpUsers().timeout foreach println
       assertResult(Nil)(db.getUsers(List(rabbitId)).timeout)
       assertResult(2)(db.getUsers(List(0, 2)).timeout.length)
     }

@@ -89,7 +89,7 @@ object AuditDB {
   object u extends Users("u")
   object ua extends UsersAudit("ua")
   // Gets us the maximum version for each entity.
-  object p extends SubQuery("p",
+  object m extends SubQuery("m",
     select(u.entityId as "e", u.versionId.max as "v").from(u).groupBy(u.entityId)) {
     val entityId: TField = "e"
     val versionId: TField = "v"
@@ -98,14 +98,10 @@ object AuditDB {
 class AuditDB private(db: HSQL.DB) {
   import AuditDB._
   def getRootUser: DBPromise[User] = db blockCommit { tx =>
-    tx.query(
-      select(u.recordId, u.entityId, u.versionId.max, u.name)
-          .from(u).where(u.entityId === rootUserId)
-          .groupBy(u.entityId, u.recordId))(
-      r => User(AuditPK(r.int.get, r.int.get, r.int.get), r.string.get))
+    tx.query(selectLatestUser.where(u.entityId === rootUserId))(readUser)
         .headOption.getOrElse(sys error "root user not found.")
   }
-  private def updateAuditUser(recordId: Int, userActor: User)(implicit tx: HSQL.Connection): Int = {
+  private def updateUserAudit(recordId: Int, userActor: User)(implicit tx: HSQL.Connection): Int = {
     tx.mutate(insert(ua)(ua.recordId -> recordId, ua.actorId -> userActor.key.recordId))
     recordId
   }
@@ -116,33 +112,33 @@ class AuditDB private(db: HSQL.DB) {
   }
   def createUser(name: String)(implicit userActor: User): DBPromise[Int] = db blockCommit { implicit tx =>
     val collisions = tx.query(select(u.recordId, u.entityId, u.versionId).from(u)
-        .innerJoin(p).on((p.entityId === u.entityId) && (p.versionId === u.versionId))
+        .innerJoin(m).on((m.entityId === u.entityId) && (m.versionId === u.versionId))
         .where(u.name === name))(r => (r.int.get, r.int.get, r.int.get))
     if (collisions.nonEmpty) {
       sys error s"User name '$name' exists: $collisions"
     } else {
       val entityId = 1 + tx.query(select(u.entityId.max).from(u))(_.int.get).head
       tx.mutate(insert(u)(u.entityId -> entityId, u.versionId -> initialVersionId, u.entityStatus -> true, u.name -> name))
-      updateAuditUser(tx.lastInsertId(), userActor)
+      updateUserAudit(tx.lastInsertId(), userActor)
     }
+  }
+  private def withSingleton[T](entities: List[T]): T = entities match {
+    case e :: Nil => e
+    case Nil => sys error s"Entity not found."
+    case wat => sys error s"Expected single entity, got $wat"
+  }
+  implicit class `singleton list or bust`[T](val items: List[T]) {
+    def singleton: T = withSingleton(items)
   }
   def updateUser(entityId: Int, name: String)(implicit userActor: User): DBPromise[Int] = db blockCommit { implicit tx =>
-    tx.query(selectLatestUser.where(u.entityId === entityId))(r => (r.int.get, r.int.get, r.int.get, r.string.get)) match {
-      case Nil =>
-        sys error s"Entity not found: $entityId."
-      case h :: _ =>
-        tx.mutate(insert(u)(u.entityId -> entityId, u.versionId -> (h._1 + 1), u.entityStatus -> h._2, u.name -> name))
-        updateAuditUser(tx.lastInsertId(), userActor)
-    }
+    val e = tx.query(selectLatestUser.where(u.entityId === entityId))(readUser).singleton
+    tx.mutate(insert(u)(u.entityId -> entityId, u.versionId -> (e.key.versionId + 1), u.entityStatus -> true, u.name -> name))
+    updateUserAudit(tx.lastInsertId(), userActor)
   }
   def deleteUser(entityId: Int)(implicit userActor: User): DBPromise[Int] = db blockCommit { implicit tx =>
-    tx.query(selectLatestUser.where(u.entityId === entityId))(r => (r.int.get, r.int.get, r.int.get, r.string.get)) match {
-      case Nil =>
-        sys error s"Entity not found: $entityId."
-      case h :: _ =>
-        tx.mutate(insert(u)(u.entityId -> entityId, u.versionId -> (h._3 + 1), u.entityStatus -> false, u.name -> h._4))
-        updateAuditUser(tx.lastInsertId(), userActor)
-    }
+    val e = tx.query(selectLatestUser.where(u.entityId === entityId))(readUser).singleton
+    tx.mutate(insert(u)(u.entityId -> entityId, u.versionId -> (e.key.versionId + 1), u.entityStatus -> false, u.name -> e.name))
+    updateUserAudit(tx.lastInsertId(), userActor)
   }
   def getUsers(entityIds: List[Int]): DBPromise[List[User]] = db autoCommit { tx =>
     tx.query(selectLatestUser.where(u.entityId in entityIds))(readUser)
@@ -150,28 +146,12 @@ class AuditDB private(db: HSQL.DB) {
   private val selectLatestUser: Select =
     select(u.recordId, u.entityId, u.versionId, u.name)
         .from(u)
-        .innerJoin(p).on((u.entityId === p.entityId) && (u.versionId === p.versionId))
+        .innerJoin(m).on((u.entityId === m.entityId) && (u.versionId === m.versionId))
         .where(u.entityStatus === true)
   private def readUser(r: RowCursor): User =
     User(AuditPK(r.int.get, r.int.get, r.int.get), r.string.get)
   def dumpUsers(): DBPromise[List[(User, Boolean)]] = db autoCommit { tx =>
     tx.query(select(u.recordId, u.entityId, u.versionId, u.name, u.entityStatus).from(u)
-    )(r => User(AuditPK(r.int.get, r.int.get, r.int.get), r.string.get) -> r.bool.get)
-  }
-  def wat(): DBPromise[List[Any]] = db autoCommit { tx =>
-    // val entityId = 1
-    val m = new Users("m")
-    val q1: Select = select(m.entityId as "e", m.versionId.max as "v").from(m).groupBy(m.entityId)
-    println(q1.toString)
-    tx.query(q1) { r =>
-      println(s"${r.int.get}, ${r.int.get}")
-    }
-    object p extends SubQuery("p", q1) {
-      val entityId: TField = "e"
-      val versionId: TField = "v"
-    }
-    val q2 = select(u.recordId, u.entityId, u.versionId, u.name).from(u)
-        .innerJoin(p).on((p.entityId === u.entityId) && (p.versionId === u.versionId)).where(u.name === "Bongo")
-    tx.query(q2)(r => (r.int.get, r.int.get, r.int.get, r.string.get))
+    )(r => readUser(r) -> r.bool.get)
   }
 }
