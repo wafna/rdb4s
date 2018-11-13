@@ -1,9 +1,7 @@
 package wafna.rdb4s.db
 import java.sql.ResultSet
 import java.util.UUID
-
 import wafna.rdb4s.bracket
-
 import scala.concurrent.duration.FiniteDuration
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
@@ -97,10 +95,9 @@ object RDB {
             case x: java.sql.Timestamp => stmt.setTimestamp(index, x)
             case x: java.util.Date =>
               stmt.setTimestamp(index, new Timestamp(x.getTime))
-              // http://crafted-software.blogspot.com/2013/03/uuid-values-from-jdbc-to-postgres.html
             case x: java.util.UUID => stmt.setObject(index, x)
             case null =>
-              sys.error(s"Null values not allowed: use Null wrapper or a literal NULL.")
+              sys error s"Null values not allowed: use Null wrapper or a literal NULL."
             case n@Null() =>
               val cn = n.t.runtimeClass.getCanonicalName
               stmt.setNull(index,
@@ -119,12 +116,7 @@ object RDB {
                 else sys error s"Unhandled NULL data type: $cn"
               )
             case _ =>
-              val className = try value.getClass.getCanonicalName catch {
-                case _: Throwable => value.getClass.toString
-              }
-              sys.error(
-                s"Unhandled data type in prepared statement: ${value.toString} [$className}]"
-              )
+              sys error s"Unhandled data type in prepared statement: `${Try(value.getClass.getCanonicalName).getOrElse(value.getClass.toString)}` with value `${value.toString}`"
           }
       }
       stmt
