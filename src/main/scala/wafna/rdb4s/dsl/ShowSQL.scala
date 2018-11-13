@@ -23,7 +23,9 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     sql print s"UPDATE ${u.table.tableName} SET "
     intercalate(u.fields.map(Some(_)), None) foreach {
       case None => sql print ", "
-      case Some(v) => showValue(v._2)(FieldNamePlain)
+      case Some(v) =>
+        sql print s" ${v._1.name} = "
+        showValue(v._2)(FieldNamePlain)
     }
     sql print " WHERE "
     showBool(u.where)(FieldNamePlain)
