@@ -71,6 +71,7 @@ object TestDB {
 class TestDB(db: HSQL.DB) {
   import TestDB._
   import TestDomain._
+  import ShowSQL._
   def createSchema(): DBPromise[Int] = db autoCommit { cx =>
     cx.mutate("DROP TABLE user IF EXISTS", Nil)
     cx.mutate("DROP TABLE company IF EXISTS", Nil)
@@ -148,7 +149,7 @@ class TestDB(db: HSQL.DB) {
   } checkAffectedRows 1
   def usersById(ids: List[Int]): DBPromise[List[User]] = db autoCommit { cx =>
     // the descending sort on u.name has no effect; it's here to test orderBy.
-    cx.query(crud.user.selector.where(u.id in ids).orderBy(u.id.asc, u.name.desc).sql)(crud.user.extractor)
+    cx.query(crud.user.selector.where(u.id in ids).orderBy(u.id.asc, u.name.desc))(crud.user.extractor)
   }
   def _tester_1(dt: FiniteDuration): DBPromise[(Long, String)] = db autoCommit { _ =>
     Thread sleep dt.toMillis

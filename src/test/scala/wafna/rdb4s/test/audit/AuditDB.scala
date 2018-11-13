@@ -88,6 +88,12 @@ object AuditDB {
   class UsersAudit(alias: String) extends Table("users_audit", alias) with AuditTable
   object u extends Users("u")
   object ua extends UsersAudit("ua")
+  // Gets us the maximum version for each entity.
+  object p extends SubQuery("p",
+    select(u.entityId as "e", u.versionId.max as "v").from(u).groupBy(u.entityId)) {
+    val entityId: TField = "e"
+    val versionId: TField = "v"
+  }
 }
 class AuditDB private(db: HSQL.DB) {
   import AuditDB._
@@ -109,22 +115,19 @@ class AuditDB private(db: HSQL.DB) {
       r => AuditRecord(r.int.get, r.int.get, r.timestamp.get.getTime.millis))
   }
   def createUser(name: String)(implicit userActor: User): DBPromise[Int] = db blockCommit { implicit tx =>
-    val collisions = tx.query(
-      select(u.entityId, u.versionId.max).from(u)
-          .where((u.name === name) && (u.entityStatus === true))
-          .groupBy(u.entityId))(r => (r.int.get, r.int.get))
-    if (collisions.nonEmpty)
+    val collisions = tx.query(select(u.recordId, u.entityId, u.versionId).from(u)
+        .innerJoin(p).on((p.entityId === u.entityId) && (p.versionId === u.versionId))
+        .where(u.name === name))(r => (r.int.get, r.int.get, r.int.get))
+    if (collisions.nonEmpty) {
       sys error s"User name '$name' exists: $collisions"
-    val entityId = 1 + tx.query(select(u.entityId.max).from(u))(_.int.get).head
-    tx.mutate(insert(u)(u.entityId -> entityId, u.versionId -> initialVersionId, u.entityStatus -> true, u.name -> name))
-    updateAuditUser(tx.lastInsertId(), userActor)
+    } else {
+      val entityId = 1 + tx.query(select(u.entityId.max).from(u))(_.int.get).head
+      tx.mutate(insert(u)(u.entityId -> entityId, u.versionId -> initialVersionId, u.entityStatus -> true, u.name -> name))
+      updateAuditUser(tx.lastInsertId(), userActor)
+    }
   }
   def updateUser(entityId: Int, name: String)(implicit userActor: User): DBPromise[Int] = db blockCommit { implicit tx =>
-    tx.query(
-      select(u.versionId.max, u.entityStatus)
-          .from(u).where(u.entityId === entityId)
-          .groupBy(u.versionId, u.entityStatus)
-    )(r => (r.int.get, r.bool.get)) match {
+    tx.query(selectLatestUser.where(u.entityId === entityId))(r => (r.int.get, r.int.get, r.int.get, r.string.get)) match {
       case Nil =>
         sys error s"Entity not found: $entityId."
       case h :: _ =>
@@ -132,53 +135,43 @@ class AuditDB private(db: HSQL.DB) {
         updateAuditUser(tx.lastInsertId(), userActor)
     }
   }
+  def deleteUser(entityId: Int)(implicit userActor: User): DBPromise[Int] = db blockCommit { implicit tx =>
+    tx.query(selectLatestUser.where(u.entityId === entityId))(r => (r.int.get, r.int.get, r.int.get, r.string.get)) match {
+      case Nil =>
+        sys error s"Entity not found: $entityId."
+      case h :: _ =>
+        tx.mutate(insert(u)(u.entityId -> entityId, u.versionId -> (h._3 + 1), u.entityStatus -> false, u.name -> h._4))
+        updateAuditUser(tx.lastInsertId(), userActor)
+    }
+  }
+  def getUsers(entityIds: List[Int]): DBPromise[List[User]] = db autoCommit { tx =>
+    tx.query(selectLatestUser.where(u.entityId in entityIds))(readUser)
+  }
   private val selectLatestUser: Select =
-    select(u.recordId, u.entityId, u.versionId.max, u.name)
+    select(u.recordId, u.entityId, u.versionId, u.name)
         .from(u)
+        .innerJoin(p).on((u.entityId === p.entityId) && (u.versionId === p.versionId))
         .where(u.entityStatus === true)
-        .groupBy(u.entityId, u.recordId)
   private def readUser(r: RowCursor): User =
     User(AuditPK(r.int.get, r.int.get, r.int.get), r.string.get)
-  def getUser(entityId: Int): DBPromise[List[User]] = db autoCommit { tx =>
-    tx.query(selectLatestUser
-        .where(u.entityId === entityId)
-    )(readUser)
-  }
   def dumpUsers(): DBPromise[List[(User, Boolean)]] = db autoCommit { tx =>
     tx.query(select(u.recordId, u.entityId, u.versionId, u.name, u.entityStatus).from(u)
     )(r => User(AuditPK(r.int.get, r.int.get, r.int.get), r.string.get) -> r.bool.get)
   }
   def wat(): DBPromise[List[Any]] = db autoCommit { tx =>
-    /*
-        tx.query(
-               "SELECT u.entity_id, MAX(u.version_id) from users u GROUP BY u.entity_id"
-        )(r => (r.int.get, r.int.get))
-    */
-    /*
-        tx.query(
-          """SELECT p.record_id, p.entity_id, p.version_id, p.name
-            |FROM users p
-            |INNER JOIN (SELECT u.entity_id as entity_id, MAX(u.version_id) as version_id FROM users u GROUP BY u.entity_id) q
-            |  ON p.entity_id = q.entity_id AND p.version_id = q.version_id""".stripMargin
-        )(r => (r.int.get, r.int.get, r.int.get, r.string.get))
-    */
-    val entityId = 1
-/*
-    tx.query(
-      s"""SELECT p.record_id, p.version_id, p.name
-         |FROM users p
-         |INNER JOIN (SELECT u.entity_id as entity_id, MAX(u.version_id) as version_id FROM users u WHERE u.entity_id = $entityId GROUP BY u.entity_id) q
-         |  ON p.entity_id = q.entity_id AND p.version_id = q.version_id""".stripMargin
-    )(r => (r.int.get, entityId, r.int.get, r.string.get))
-*/
+    // val entityId = 1
     val m = new Users("m")
-    val sq: Select = select(m.entityId as "e", m.versionId.max as "v").from(m).where(m.entityId === entityId).groupBy(m.entityId)
-    object yo extends SubQuery(sq, "p") {
+    val q1: Select = select(m.entityId as "e", m.versionId.max as "v").from(m).groupBy(m.entityId)
+    println(q1.toString)
+    tx.query(q1) { r =>
+      println(s"${r.int.get}, ${r.int.get}")
+    }
+    object p extends SubQuery("p", q1) {
       val entityId: TField = "e"
       val versionId: TField = "v"
     }
-    tx.query(
-      select(u.recordId, u.entityId, u.versionId).from(u).innerJoin(yo).on((yo.entityId === u.entityId) && (yo.versionId === u.versionId))
-    )(r => (r.int.get, entityId, r.int.get, r.string.get))
+    val q2 = select(u.recordId, u.entityId, u.versionId, u.name).from(u)
+        .innerJoin(p).on((p.entityId === u.entityId) && (p.versionId === u.versionId)).where(u.name === "Bongo")
+    tx.query(q2)(r => (r.int.get, r.int.get, r.int.get, r.string.get))
   }
 }

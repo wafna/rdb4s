@@ -71,7 +71,7 @@ object RDB {
     def mutate(sql: String, args: List[Any] = Nil): Int =
       try bracket(prepareStatement(sql, args))(_.close())(_.executeUpdate())
       catch {
-        case e: Throwable => throw new CPException.SQLExecution(sql, e)
+        case e: Throwable => throw new CPException.SQLExecution(s"\n$sql\n$args", e)
       }
     def mutate(q: (String, List[Any])): Int = mutate(q._1, q._2)
     /**
