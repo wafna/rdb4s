@@ -1,11 +1,8 @@
 package wafna.rdb4s.test.audit
 import java.util.UUID
-
 import org.scalatest.FlatSpec
 import wafna.rdb4s.db.CPException
 import wafna.rdb4s.db.RDB.DBPromise
-import wafna.rdb4s.test.audit.AuditDB.AuditPK
-
 import scala.concurrent.duration._
 object TestAuditDB {
   implicit class `default timeout`[T](val p: DBPromise[T]) {
@@ -51,8 +48,14 @@ class TestAuditDB extends FlatSpec {
       intercept[CPException.Reflected](db.createUser("Bongo").timeout)
       db.deleteUser(rabbitId).timeout
       assertResult(Nil)(db.getUsers(List(rabbitId)).timeout)
-      // We don't get the deleted user.
-      assertResult(2)(db.getUsers(List(rootUser.key.entityId, u1)).timeout.length)
+      // Ensure we don't get the deleted user.
+      db.getUsers(List(rootUser.key.entityId, u1)).timeout match {
+        case users =>
+          assertResult(2)(users.length)
+          assert(users.map(_.key.entityId).toSet contains rootUser.key.entityId)
+          assert(users.map(_.key.entityId).toSet contains u1)
+      }
+      db.dumpAudit2().timeout foreach println
     }
   }
 }

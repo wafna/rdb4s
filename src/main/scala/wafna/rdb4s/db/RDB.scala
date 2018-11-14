@@ -74,6 +74,9 @@ object RDB {
       catch {
         case e: Throwable => throw new CPException.SQLExecution(s"\n$sql\n$args", e)
       }
+    /**
+      * This is here to be called from an implicit conversion.
+      */
     def mutate(q: (String, List[Any])): Int = mutate(q._1, q._2)
     /**
       * Interpolates arguments into a prepared statement.

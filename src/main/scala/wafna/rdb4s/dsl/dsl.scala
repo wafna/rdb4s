@@ -9,6 +9,11 @@ package object dsl {
   implicit def `show insert`(s: Insert): (String, List[Any]) = ShowSQL(_.showInsert(s))
   implicit def `show update`(s: Update): (String, List[Any]) = ShowSQL(_.showUpdate(s))
   implicit def `show delete`(s: Delete): (String, List[Any]) = ShowSQL(_.showDelete(s))
+  implicit def `show mutator`(s: Mutator): (String, List[Any]) = s match {
+    case s: Insert => ShowSQL(_.showInsert(s))
+    case s: Update => ShowSQL(_.showUpdate(s))
+    case s: Delete => ShowSQL(_.showDelete(s))
+  }
   /**
     * The name of a field in a relation.
     */
@@ -122,8 +127,11 @@ package object dsl {
     def *(q: Value): Value.MUL = Value.MUL(p, q)
     def /(q: Value): Value.DIV = Value.DIV(p, q)
   }
+  // The named comparators force the RHS to be a value.  This resolves an ambiguity when dealing with generic lists of values.
   implicit class `Field comparisons`(val p: Field) {
     // RHS Field
+    def eq(q: Any): Pred = Pred.EQ(Value.QField(p), Value.Literal(q))
+    def neq(q: Any): Pred = Pred.NEQ(Value.QField(p), Value.Literal(q))
     def ===(q: Field): Pred = Pred.EQ(Value.QField(p), Value.QField(q))
     def !==(q: Field): Pred = Pred.NEQ(Value.QField(p), Value.QField(q))
     def <(q: Field): Pred = Pred.LT(Value.QField(p), Value.QField(q))
@@ -215,10 +223,12 @@ package object dsl {
     def asc: SortKey = SortKey(field, SortDirection.ASC)
     def desc: SortKey = SortKey(field, SortDirection.DESC)
   }
-  class Insert(val table: Table, val fields: List[(Field, Value.Literal)]) {
+  /** Tags an object for use in `Connection.mutate`. */
+  sealed trait Mutator
+  class Insert(val table: Table, val fields: List[(Field, Value.Literal)]) extends Mutator {
     override def toString: String = ShowSQL(_.showInsert(this))._1
   }
-  class Update(val table: Table, val fields: List[(Field, Value)], val where: Bool) {
+  class Update(val table: Table, val fields: List[(Field, Value)], val where: Bool) extends Mutator {
     override def toString: String = ShowSQL(_.showUpdate(this))._1
     // Repeated calls are ANDed together.
     def where(cond: Bool): Update = new Update(table, fields, Bool.AND(where, cond))
@@ -227,7 +237,7 @@ package object dsl {
   class UpdateWhere(table: Table, fields: List[(Field, Value)]) {
     def where(cond: Bool): Update = new Update(table, fields, cond)
   }
-  class Delete(val table: Table, val where: Bool) {
+  class Delete(val table: Table, val where: Bool) extends Mutator {
     override def toString: String = ShowSQL(_.showDelete(this))._1
   }
   implicit def `param to param list`(p: (Field, Any)): ArrayBuffer[(Field, Any)] = {
@@ -261,6 +271,8 @@ package object dsl {
     */
   def select(selections: Selection*): SelectFields =
     new SelectFields(selections.toSeq)
+  def select(fields: List[Field]): SelectFields =
+    new SelectFields(fields.map(f => Selection(TableFunction(f), None)))
   def insert(table: Table)(fields: (Field, Any)*): Insert =
     new Insert(table, fields.toList.map(f => f._1 -> Value.Literal(f._2)))
   def update(table: Table)(fields: (Field, Value)*): UpdateWhere =
