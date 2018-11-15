@@ -142,6 +142,7 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
         case CustomFunction(n, a) =>
           sql print s"$n("
           showValue(a)(FieldNameFQ)
+          sql print ")"
       }
   }
   def showBool(cond: Bool)(implicit fn: FieldName): Unit =

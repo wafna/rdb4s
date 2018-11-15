@@ -55,12 +55,19 @@ class TestDSL extends FlatSpec {
     assertResult(
       """SELECT a.id
         |FROM something a
-        |WHERE (a.id < to_timestamp(b.id)""".stripMargin.straighten())(
-      select(thing1.id).from(thing1).where(thing1.id < ("to_timestamp"  !! thing2.id))._1.straighten())
+        |WHERE (a.id < to_timestamp(b.id))""".stripMargin.straighten())(
+      select(thing1.id).from(thing1).where(thing1.id < ("to_timestamp" !! thing2.id))._1.straighten())
     assertResult(
       """SELECT a.id
         |FROM something a
-        |WHERE (a.id < to_timestamp(?)""".stripMargin.straighten())(
-      select(thing1.id).from(thing1).where(thing1.id < ("to_timestamp"  !! 42))._1.straighten())
+        |WHERE (a.id < to_timestamp(?))""".stripMargin.straighten())(
+      select(thing1.id).from(thing1).where(thing1.id < ("to_timestamp" !! 42))._1.straighten())
+    // It's important that the values in the where clause are a list of Any to test the type lifting.
+    assertResult("SELECT a.id, b.id FROM something a INNER JOIN something b ON ((b.id = a.id) AND (b.name = b.name)) WHERE (((a.id = ?) AND (a.name = ?)) AND (a.rank = ?))")(
+      select(thing1.id, thing2.id).from(thing1)
+          .innerJoin(thing2).on((thing2.id === thing1.id) && (thing2.name === thing2.name))
+          .where((List[Field](thing1.id, thing1.name, thing1.rank) zip List[Any](1, 2, 3)).foldLeft(None: Option[Bool])((w, c) =>
+            Some(w.map(_ && (c._1 === c._2)).getOrElse(c._1 === c._2))).get)
+          .limit(1)._1.straighten())
   }
 }

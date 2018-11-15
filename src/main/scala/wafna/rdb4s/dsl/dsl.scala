@@ -111,6 +111,7 @@ package object dsl {
   implicit def `UUID to Value`(i: UUID): Value.Literal = Value.Literal(i)
   implicit def `Time to Value`(i: Time): Value.Literal = Value.Literal(i)
   implicit def `Date to Value`(i: Date): Value.Literal = Value.Literal(i)
+  implicit def `Any to Value`(i: Any): Value.Literal = Value.Literal(i)
   /**
     * This is needed to coerce a field to a value for arithmetic that already requires
     * implicits to implement.
