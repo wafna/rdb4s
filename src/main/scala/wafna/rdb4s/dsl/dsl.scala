@@ -14,10 +14,11 @@ package object dsl {
     case s: Update => ShowSQL(_.showUpdate(s))
     case s: Delete => ShowSQL(_.showDelete(s))
   }
+  sealed trait Value
   /**
     * The name of a field in a relation.
     */
-  abstract class Field(val name: String) {
+  abstract class Field(val name: String) extends Value {
     /**
       * The qualified name when the field is in an aliased table.
       */
@@ -86,7 +87,6 @@ package object dsl {
     def on(cond: Bool): Select =
       new Select(projection.selections, projection.tables, new Join(table, cond, kind) :: projection.joins, None, Nil, Nil, None)
   }
-  sealed trait Value
   sealed abstract class ArithmeticBinaryOp(val p: Value, val q: Value) extends Value
   object Value {
     case class QField(f: Field) extends Value
@@ -129,16 +129,16 @@ package object dsl {
   }
   // The named comparators force the RHS to be a value.  This resolves an ambiguity when dealing with generic lists of values.
   implicit class `Field comparisons`(val p: Field) {
-    // RHS Field
-    def eq(q: Any): Pred = Pred.EQ(Value.QField(p), Value.Literal(q))
-    def neq(q: Any): Pred = Pred.NEQ(Value.QField(p), Value.Literal(q))
-    def ===(q: Field): Pred = Pred.EQ(Value.QField(p), Value.QField(q))
-    def !==(q: Field): Pred = Pred.NEQ(Value.QField(p), Value.QField(q))
-    def <(q: Field): Pred = Pred.LT(Value.QField(p), Value.QField(q))
-    def <=(q: Field): Pred = Pred.LTE(Value.QField(p), Value.QField(q))
-    def >(q: Field): Pred = Pred.GT(Value.QField(p), Value.QField(q))
-    def >=(q: Field): Pred = Pred.GTE(Value.QField(p), Value.QField(q))
-    def like(q: Field): Pred = Pred.Like(Value.QField(p), Value.QField(q))
+//    // RHS Field
+//    def eq(q: Any): Pred = Pred.EQ(Value.QField(p), Value.Literal(q))
+//    def neq(q: Any): Pred = Pred.NEQ(Value.QField(p), Value.Literal(q))
+//    def ===(q: Field): Pred = Pred.EQ(Value.QField(p), Value.QField(q))
+//    def !==(q: Field): Pred = Pred.NEQ(Value.QField(p), Value.QField(q))
+//    def <(q: Field): Pred = Pred.LT(Value.QField(p), Value.QField(q))
+//    def <=(q: Field): Pred = Pred.LTE(Value.QField(p), Value.QField(q))
+//    def >(q: Field): Pred = Pred.GT(Value.QField(p), Value.QField(q))
+//    def >=(q: Field): Pred = Pred.GTE(Value.QField(p), Value.QField(q))
+//    def like(q: Field): Pred = Pred.Like(Value.QField(p), Value.QField(q))
     // RHS Value
     def ===(q: Value): Pred = Pred.EQ(Value.QField(p), q)
     def !==(q: Value): Pred = Pred.NEQ(Value.QField(p), q)
@@ -248,17 +248,21 @@ package object dsl {
   /**
     * Functions generate values with the most trivial being a field reference.
     */
-  sealed abstract class Function
+  sealed abstract class Function extends Value
   case class TableFunction(field: Field) extends Function
   implicit def `field to table function`(field: Field): TableFunction = TableFunction(field)
   sealed abstract class AggregateFunction extends Function
-  case class Max(f: Function) extends AggregateFunction
-  case class Min(f: Function) extends AggregateFunction
-  case class Avg(f: Function) extends AggregateFunction
+  case class Max(f: Value) extends AggregateFunction
+  case class Min(f: Value) extends AggregateFunction
+  case class Avg(f: Value) extends AggregateFunction
+  case class CustomFunction(name: String, v: Value) extends Function
   implicit class `field aggregate functions`(f: Field) {
     def max: Max = Max(f)
     def min: Min = Min(f)
     def avg: Avg = Avg(f)
+  }
+  implicit class `invoke custom function`(val functionName: String) {
+    def !!(v: Value): CustomFunction = CustomFunction(functionName, v)
   }
   case class Selection(f: Function, name: Option[String])
   implicit def `Anonymous Function to Selection`(f: Function): Selection = Selection(f, None)

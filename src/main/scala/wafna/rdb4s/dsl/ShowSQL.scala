@@ -38,8 +38,8 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     sql print s"DELETE FROM ${d.table.tableName} WHERE "
     showBool(d.where)(FieldNamePlain)
   }
-  def showSelection(s: Selection): Unit = {
-    showFunction(s.f)
+  def showSelection(s: Selection)(implicit p: FieldName): Unit = {
+    showValue(s.f)
     s.name foreach { n =>
       sql print s" as $n"
     }
@@ -49,7 +49,7 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     sql print s"SELECT "
     intercalate(s.selections.toList.map(Some(_)), None) foreach {
       case None => sql print ", "
-      case Some(v) => showSelection(v)
+      case Some(v) => showSelection(v)(FieldNameFQ)
     }
     sql print s" FROM "
     intercalate(s.tables.toList.map(Some(_)), None) foreach {
@@ -87,23 +87,6 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     case t: Table =>
       sql print s"${t.tableName} ${t.alias}"
   }
-  def showFunction(f: Function): Unit = {
-    def showF(n: String, f: Function): Unit = {
-      sql print n
-      sql print "("
-      showFunction(f)
-      sql print ")"
-    }
-    f match {
-      case TableFunction(field) =>
-        sql print field.qname
-      case a: AggregateFunction => a match {
-        case Max(q) => showF("MAX", q)
-        case Min(q) => showF("MIN", q)
-        case Avg(q) => showF("AVG", q)
-      }
-    }
-  }
   /**
     * Because we always use aliased tables in updates and queries we need to indicate
     * whether to use the base name or qualified name when we emit the SQL.
@@ -126,6 +109,7 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     sql print ")"
   }
   def showValue(v: Value)(implicit fn: FieldName): Unit = v match {
+    case f: Field => sql print fn(f)
     case Value.QField(f) => sql print fn(f)
     case Value.Null => sql print "NULL"
     case Value.True => sql print "TRUE"
@@ -140,6 +124,25 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     case Value.SUB(p, q) => showBinOp(p, q, "-")
     case Value.MUL(p, q) => showBinOp(p, q, "*")
     case Value.DIV(p, q) => showBinOp(p, q, "/")
+    case f: Function =>
+      def showF(n: String, v: Value): Unit = {
+        sql print n
+        sql print "("
+        showValue(v)
+        sql print ")"
+      }
+      f match {
+        case TableFunction(field) =>
+          sql print field.qname
+        case a: AggregateFunction => a match {
+          case Max(q) => showF("MAX", q)
+          case Min(q) => showF("MIN", q)
+          case Avg(q) => showF("AVG", q)
+        }
+        case CustomFunction(n, a) =>
+          sql print s"$n("
+          showValue(a)(FieldNameFQ)
+      }
   }
   def showBool(cond: Bool)(implicit fn: FieldName): Unit =
     cond match {

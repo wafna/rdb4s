@@ -41,9 +41,9 @@ class TestTestDB extends FlatSpec {
         "Foreign key violation..")(
         intercept[CPException.Reflected](
           // The real cause is two levels deep. The next level down contains the SQL.
-          db.associate(99, 99) reflect 10.millis).getCause.getCause.getClass)
+          db.associate(99, 99) reflect 11.millis).getCause.getCause.getClass)
       // A premise of the joins, below.
-      db.associate(0, 0) reflect 10.millis
+      db.associate(0, 0) reflect 1.seconds
       assertResult(
         List(0 -> 0))(
         db.fetchAssociations() reflect 1.second)

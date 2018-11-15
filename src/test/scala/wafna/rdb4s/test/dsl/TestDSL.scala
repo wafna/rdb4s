@@ -52,5 +52,15 @@ class TestDSL extends FlatSpec {
       update(thing1)(thing1.rank -> (thing1.rank.! * 66)).where(thing1.id === 99)._1.straighten())
     assertResult("""UPDATE something SET rank = (rank / ?) WHERE (id = ?)""".straighten())(
       update(thing1)(thing1.rank -> (thing1.rank.! / 66)).where(thing1.id === 99)._1.straighten())
+    assertResult(
+      """SELECT a.id
+        |FROM something a
+        |WHERE (a.id < to_timestamp(b.id)""".stripMargin.straighten())(
+      select(thing1.id).from(thing1).where(thing1.id < ("to_timestamp"  !! thing2.id))._1.straighten())
+    assertResult(
+      """SELECT a.id
+        |FROM something a
+        |WHERE (a.id < to_timestamp(?)""".stripMargin.straighten())(
+      select(thing1.id).from(thing1).where(thing1.id < ("to_timestamp"  !! 42))._1.straighten())
   }
 }

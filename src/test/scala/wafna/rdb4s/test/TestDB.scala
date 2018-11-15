@@ -2,6 +2,7 @@ package wafna.rdb4s.test
 import wafna.rdb4s.db._
 import wafna.rdb4s.db.RDB.DBPromise
 import wafna.rdb4s.dsl._
+
 import scala.concurrent.duration.FiniteDuration
 /**
   * For tests.
@@ -71,7 +72,6 @@ object TestDB {
 class TestDB(db: HSQL.DB) {
   import TestDB._
   import TestDomain._
-  import ShowSQL._
   def createSchema(): DBPromise[Int] = db autoCommit { cx =>
     cx.mutate("DROP TABLE user IF EXISTS", Nil)
     cx.mutate("DROP TABLE company IF EXISTS", Nil)
