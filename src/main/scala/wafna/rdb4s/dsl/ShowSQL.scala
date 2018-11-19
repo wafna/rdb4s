@@ -172,6 +172,8 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
       case Bool.NOT(p) =>
         sql print "NOT"
         showBool(p)
+      case Bool.BOOL(b) =>
+        sql print (if (b) "TRUE" else "FALSE")
     }
   def showJoin(j: Join): Unit = {
     sql print (j.kind match {
