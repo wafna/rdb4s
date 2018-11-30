@@ -167,8 +167,8 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
         sql print "("
         showBool(p)
         sql print " OR "
-        sql print ")"
         showBool(q)
+        sql print ")"
       case Bool.NOT(p) =>
         sql print "NOT"
         showBool(p)
