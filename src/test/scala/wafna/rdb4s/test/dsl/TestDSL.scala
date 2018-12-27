@@ -1,21 +1,22 @@
 package wafna.rdb4s.test.dsl
 import org.scalatest.FlatSpec
 import wafna.rdb4s
+import wafna.rdb4s.db.JSONB
 class TestDSL extends FlatSpec {
+  import rdb4s.dsl._
+  class Thing(alias: String) extends Table("something", alias) {
+    val id: TField = "id"
+    val name: TField = "name"
+    val rank: TField = "rank"
+    val serialNumber: TField = "serial_number"
+  }
+  implicit class Straighten(s: String) {
+    def straighten(): String = s.replaceAll("[\r\n]+", " ").replaceAll("\\s+", " ").trim
+  }
+  object thing1 extends Thing("a")
+  object thing2 extends Thing("b")
+  object thing3 extends Thing("c")
   "dsl" should "emit literal sql" in {
-    import rdb4s.dsl._
-    class Thing(alias: String) extends Table("something", alias) {
-      val id: TField = "id"
-      val name: TField = "name"
-      val rank: TField = "rank"
-      val serialNumber: TField = "serial_number"
-    }
-    implicit class Straighten(s: String) {
-      def straighten(): String = s.replaceAll("[\r\n]+", " ").replaceAll("\\s+", " ").trim
-    }
-    object thing1 extends Thing("a")
-    object thing2 extends Thing("b")
-    object thing3 extends Thing("c")
     assertResult(
       """SELECT a.id, a.name, b.id, b.name
         |FROM something a
@@ -69,5 +70,11 @@ class TestDSL extends FlatSpec {
           .where((List[Field](thing1.id, thing1.name, thing1.rank) zip List[Any](1, 2, 3)).foldLeft(None: Option[Bool])((w, c) =>
             Some(w.map(_ && (c._1 === c._2)).getOrElse(c._1 === c._2))).get)
           .limit(1)._1.straighten())
+  }
+  "dsl" should "render query params" in {
+    assertResult("""INSERT INTO something (rank) VALUES (? :: JSONB)""".straighten())(
+      insert(thing1)(thing1.rank -> JSONB("{}"))._1.straighten())
+    assertResult("""UPDATE something SET rank = ? :: JSONB WHERE (id = ?)""".straighten())(
+      update(thing1)(thing1.rank -> JSONB("{}")).where(thing1.id === 0)._1.straighten())
   }
 }

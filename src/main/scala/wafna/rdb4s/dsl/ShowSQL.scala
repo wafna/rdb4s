@@ -1,6 +1,10 @@
 package wafna.rdb4s.dsl
 import java.io.PrintWriter
+import wafna.rdb4s.db.JSONB
 import scala.collection.mutable.ArrayBuffer
+/**
+  * For emitting SQL.
+  */
 object ShowSQL {
   def intercalate[T](items: List[T], sep: T): List[T] = items.foldRight(List[T]()) { (b, a) =>
     b :: (if (a.isEmpty) a else sep :: a)
@@ -31,7 +35,8 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     showBool(u.where)(FieldNamePlain)
   }
   def showInsert(i: Insert): Unit = {
-    sql print s"INSERT INTO ${i.table.tableName} (${i.fields.map(_._1.name) mkString ", "}) VALUES (${List.fill(i.fields.size)("?") mkString ", "})"
+    sql print s"INSERT INTO ${i.table.tableName} (${i.fields.map(_._1.name) mkString ", "})" +
+        s" VALUES (${i.fields.map(p => showLiteralParam(p._2.v)) mkString ", "})"
     params ++= i.fields.map(_._2.v)
   }
   def showDelete(d: Delete): Unit = {
@@ -40,10 +45,7 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
   }
   def showSelection(s: Selection)(implicit p: FieldName): Unit = {
     showValue(s.f)
-    s.name foreach { n =>
-      sql print s" as $n"
-    }
-    //sql print s"${showFunction(s.f)}${s.name.map(n => s" as $n") getOrElse ""}"
+    s.name.foreach(n => sql print s" as $n")
   }
   def showSelect(s: Select): Unit = {
     sql print s"SELECT "
@@ -108,17 +110,25 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
     showValue(q)
     sql print ")"
   }
+  /**
+    * Special handling for query params.
+    */
+  def showLiteralParam(x: Any): String = x match {
+    case JSONB(_) =>
+      "? :: JSONB"
+    case _ => "?"
+  }
   def showValue(v: Value)(implicit fn: FieldName): Unit = v match {
     case f: Field => sql print fn(f)
     case Value.QField(f) => sql print fn(f)
     case Value.Null => sql print "NULL"
     case Value.True => sql print "TRUE"
     case Value.False => sql print "FALSE"
-    case Value.Literal(i) =>
-      sql print "?"
-      params += i
+    case Value.Literal(x) =>
+      sql print showLiteralParam(x)
+      params += x
     case Value.InList(list) =>
-      sql print s"(${Array.fill(list.length)("?") mkString ", "})"
+      sql print s"(${list.map(showLiteralParam) mkString ", "})"
       params ++= list
     case Value.ADD(p, q) => showBinOp(p, q, "+")
     case Value.SUB(p, q) => showBinOp(p, q, "-")

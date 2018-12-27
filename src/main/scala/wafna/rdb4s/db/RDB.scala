@@ -99,8 +99,8 @@ object RDB {
             case x: java.util.Date =>
               stmt.setTimestamp(index, new Timestamp(x.getTime))
             case x: java.util.UUID => stmt.setObject(index, x)
-            case null =>
-              sys error s"Null values not allowed: use Null wrapper or a literal NULL."
+            case JSONB(json) =>
+              stmt.setObject(index, json)
             case n@Null() =>
               val cn = n.t.runtimeClass.getCanonicalName
               stmt.setNull(index,
@@ -116,8 +116,9 @@ object RDB {
                 // This seems to work, for now.  May need wrapper class to distinguish them, in the future.
                 else if (cn == classOf[String].getCanonicalName)
                   java.sql.JDBCType.VARCHAR.getVendorTypeNumber
-                else sys error s"Unhandled NULL data type: $cn"
-              )
+                else sys error s"Unhandled NULL data type: $cn")
+            case null =>
+              sys error s"Null values not allowed: use Null wrapper or a literal NULL."
             case _ =>
               sys error s"Unhandled data type in prepared statement: `${Try(value.getClass.getCanonicalName).getOrElse(value.getClass.toString)}` with value `${value.toString}`"
           }

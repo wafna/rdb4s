@@ -12,6 +12,11 @@ package object db {
     val t: Manifest[T] = _t
   }
   /**
+    * In lieu of having a dependency on any specific JSON library we'll wrap in this and handle in a vendor specific way.
+    * @param json
+    */
+  case class JSONB(json: String)
+  /**
     * Expresses the conversion of a row in a result set to a value.
     */
   type Extraction[T] = RowCursor => T

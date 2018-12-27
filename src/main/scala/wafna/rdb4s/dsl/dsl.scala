@@ -36,7 +36,7 @@ package object dsl {
     protected[this] def field(name: String): TField = {
       val f = TField(name)
       if (fields contains name)
-        sys error s"Field $name already exists."
+        sys error s"Field $name already defined."
       else {
         fields += name
         f
