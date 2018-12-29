@@ -49,6 +49,8 @@ class ShowSQL private(sql: PrintWriter, params: ArrayBuffer[Any]) {
   }
   def showSelect(s: Select): Unit = {
     sql print s"SELECT "
+    if (s.distinct)
+      sql print s"DISTINCT "
     intercalate(s.selections.toList.map(Some(_)), None) foreach {
       case None => sql print ", "
       case Some(v) => showSelection(v)(FieldNameFQ)

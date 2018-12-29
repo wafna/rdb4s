@@ -51,13 +51,15 @@ package object dsl {
   /**
     * Intermediate syntactic element.
     */
-  class SelectFields(val selections: Seq[Selection]) {
-    def from(tables: Relation*): Select = new Select(selections, tables, Nil, None, Nil, Nil, None)
+  class SelectFields(protected val selections: Seq[Selection], protected val _distinct: Boolean) {
+    def from(tables: Relation*): Select = new Select(selections, _distinct, tables, Nil, None, Nil, Nil, None)
+    // idempotent.
+    def distinct: SelectFields = new SelectFields(selections, _distinct)
   }
   /**
     * A SELECT statement.
     */
-  class Select(val selections: Seq[Selection], val tables: Seq[Relation], val joins: List[Join], val whereClause: Option[Bool], val order: List[SortKey], val group: List[Field], val limit: Option[Int]) {
+  class Select(val selections: Seq[Selection], val distinct: Boolean, val tables: Seq[Relation], val joins: List[Join], val whereClause: Option[Bool], val order: List[SortKey], val group: List[Field], val limit: Option[Int]) {
     override def toString: String = ShowSQL(_.showSelect(this))._1
     def join(joinTable: Relation, kind: JoinKind = Join.Inner): JoinCondition = new JoinCondition(this, joinTable, kind)
     def innerJoin(joinTable: Relation): JoinCondition = join(joinTable, Join.Inner)
@@ -66,14 +68,14 @@ package object dsl {
     def rightJoin(joinTable: Relation): JoinCondition = join(joinTable, Join.Right)
     // Repeated calls are ANDed together.
     def where(cond: Bool): Select =
-      new Select(selections, tables, joins, Some(whereClause.map(w => Bool.AND(w, cond)).getOrElse(cond)), order, group, limit)
+      new Select(selections, distinct, tables, joins, Some(whereClause.map(w => Bool.AND(w, cond)).getOrElse(cond)), order, group, limit)
     def orderBy(sortKeys: SortKey*): Select =
       if (order.nonEmpty) sys error "Ordering already defined."
-      else new Select(selections, tables, joins, whereClause, sortKeys.toList, group, limit)
+      else new Select(selections, distinct, tables, joins, whereClause, sortKeys.toList, group, limit)
     def groupBy(grouping: Field*): Select =
-      new Select(selections, tables, joins, whereClause, order, group ++ grouping.toList, limit)
+      new Select(selections, distinct, tables, joins, whereClause, order, group ++ grouping.toList, limit)
     def limit(n: Int): Select =
-      new Select(selections, tables, joins, whereClause, order, group, Some(n))
+      new Select(selections, distinct, tables, joins, whereClause, order, group, Some(n))
   }
   sealed abstract class JoinKind
   object Join {
@@ -85,7 +87,7 @@ package object dsl {
   case class Join(table: Relation, cond: Bool, kind: JoinKind)
   class JoinCondition(projection: Select, table: Relation, kind: JoinKind) {
     def on(cond: Bool): Select =
-      new Select(projection.selections, projection.tables, new Join(table, cond, kind) :: projection.joins, None, Nil, Nil, None)
+      new Select(projection.selections, false, projection.tables, new Join(table, cond, kind) :: projection.joins, None, Nil, Nil, None)
   }
   sealed abstract class ArithmeticBinaryOp(val p: Value, val q: Value) extends Value
   object Value {
@@ -275,9 +277,10 @@ package object dsl {
     * Provides conversion to SQL string plus parameters.
     */
   def select(selections: Selection*): SelectFields =
-    new SelectFields(selections.toSeq)
+    new SelectFields(selections.toSeq, _distinct = false)
+  // For reusing simple projections.
   def select(fields: List[Field]): SelectFields =
-    new SelectFields(fields.map(f => Selection(TableFunction(f), None)))
+    new SelectFields(fields.map(f => Selection(TableFunction(f), None)), _distinct = false)
   def insert(table: Table)(fields: (Field, Any)*): Insert =
     new Insert(table, fields.toList.map(f => f._1 -> Value.Literal(f._2)))
   def update(table: Table)(fields: (Field, Value)*): UpdateWhere =
