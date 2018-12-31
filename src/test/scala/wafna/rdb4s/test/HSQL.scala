@@ -26,6 +26,6 @@ object HSQL extends RDB[org.hsqldb.jdbcDriver] {
     * One liner convenience method.
     */
   def apply(database: String, config: ConnectionPool.Config)(borrow: DB => Unit)(
-      implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit =
+      implicit listener: ConnectionPool.Listener = ConnectionPool.DefaultListener): Unit =
     ConnectionPool[Connection](config, new ConnectionManager(database))(borrow)
 }

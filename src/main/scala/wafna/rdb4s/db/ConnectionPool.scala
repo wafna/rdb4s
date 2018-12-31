@@ -18,6 +18,26 @@ trait ConnectionPool[+R <: Connection] {
   */
 object ConnectionPool {
   /**
+    * Listens to events in the connection pool.  Used for gathering metrics.
+    * These methods are called in line rather than being driven off a message bus
+    * so make it quick.
+    */
+  class Listener {
+    def poolStart(): Unit = Unit
+    def poolStop(queueSize: Int): Unit = Unit
+    def unrecoverableException(e: Throwable): Unit = Unit
+    def taskStart(queueSize: Int, timeInQueue: FiniteDuration): Unit = Unit
+    def taskStop(queueSize: Int, timeToExecute: FiniteDuration): Unit = Unit
+    def threadStart(threadPoolSize: Int): Unit = Unit
+    def threadStop(threadPoolSize: Int): Unit = Unit
+    def connectionDropped(duration: FiniteDuration): Unit = Unit
+    def threadIdleTimeout(duration: FiniteDuration): Unit = Unit
+  }
+  /**
+    * Static instance for implicit defaults.
+    */
+  object DefaultListener extends Listener
+  /**
     * Configuration for a ConnectionPool.
     * Non-reentrant.
     */
@@ -94,7 +114,7 @@ object ConnectionPool {
     }
   }
   def apply[R <: Connection](config: ConnectionPool.Config, connectionManager: ConnectionManager[R])(
-      borrow: ConnectionPool[R] => Unit)(implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit = {
+      borrow: ConnectionPool[R] => Unit)(implicit listener: ConnectionPool.Listener = ConnectionPool.DefaultListener): Unit = {
     import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
     val poolName = config.name getOrElse sys.error("name required.")
     if (poolName.isEmpty) sys error s"poolName must be non-empty."
@@ -187,7 +207,13 @@ object ConnectionPool {
         } catch {
           case _: InterruptedException =>
           case e: Throwable =>
-            throw new RuntimeException(s"ConnectionPool: exception in resource block: $runnerName", e)
+            if (connectionManager recoverableException e)
+              throw new RuntimeException(s"ConnectionPool $poolName: exception in resource block: $runnerName", e)
+            else {
+              active set false
+              listener.unrecoverableException(e)
+              throw new RuntimeException (s"ConnectionPool $poolName: UNRECOVERABLE exception in resource block: $runnerName", e)
+            }
         }
         finally {
           synch synchronized {

@@ -1,6 +1,6 @@
 package wafna.rdb4s.test.cp
 import org.scalatest.FlatSpec
-import wafna.rdb4s.db.{ConnectionPool, ConnectionPoolListener}
+import wafna.rdb4s.db.{ConnectionPool}
 import wafna.rdb4s.test.HSQL
 import scala.concurrent.duration._
 class TestSQL2 extends FlatSpec {
@@ -36,6 +36,6 @@ class TestSQL2 extends FlatSpec {
           select(w.id, w.name, w.active, w.effectiveDate).from(w).where(w.name === "thingy"))(
           r => (r.int.get, r.string.get, r.bool.get, r.long.get))
       } reflect 1.second).length)
-    }(ConnectionPoolListener)
+    }(ConnectionPool.DefaultListener)
   }
 }

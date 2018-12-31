@@ -27,7 +27,7 @@ class TestConnectionPoolA extends FlatSpec {
   }
   "connection pool" should "maintain a minimum thread pool" in {
     val threads = new AtomicInteger(0)
-    implicit val listener: ConnectionPoolListener = new ConnectionPoolListener {
+    implicit val listener: ConnectionPool.Listener = new ConnectionPool.Listener {
       override def threadStart(threadPoolSize: Int): Unit = {
         threads.incrementAndGet()
       }

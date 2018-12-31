@@ -1,11 +1,11 @@
 package wafna.rdb4s.test.cp
 import org.scalatest.FlatSpec
-import wafna.rdb4s.db.{ConnectionPool, ConnectionPoolListener, CPException}
+import wafna.rdb4s.db.{ConnectionPool, CPException}
 import wafna.rdb4s.test.TestDB
 
 import scala.concurrent.duration._
 class TestConnectionPool extends FlatSpec {
-  object ConnectionPoolListenerConsole extends ConnectionPoolListener {
+  object ConnectionPoolListenerConsole extends ConnectionPool.Listener {
     private def spew(s: String): Unit = println(s"--- $s")
     override def poolStart(): Unit =
       spew("pool start")

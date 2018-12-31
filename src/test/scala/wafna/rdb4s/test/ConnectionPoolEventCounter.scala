@@ -1,11 +1,8 @@
 package wafna.rdb4s.test
-
 import java.util.concurrent.atomic.AtomicBoolean
-
 import com.codahale.metrics.{Meter, MetricRegistry}
-import wafna.rdb4s.db.ConnectionPoolListener
-
-import scala.concurrent.duration.{Duration, FiniteDuration}
+import wafna.rdb4s.db.ConnectionPool
+import scala.concurrent.duration.FiniteDuration
 object ConnectionPoolEventCounter {
   // For testing en masse.
   case class ConnectionPoolEventCounts(poolStart: Boolean, poolStop: Boolean, taskStart: Long, taskStop: Long, threadStart: Long, threadStop: Long)
@@ -18,7 +15,7 @@ object ConnectionPoolEventCounter {
 /**
   * Counts each event.  Useful for testing behavior.
   */
-class ConnectionPoolEventCounter extends ConnectionPoolListener {
+class ConnectionPoolEventCounter extends ConnectionPool.Listener {
   val metrics: MetricRegistry = new MetricRegistry()
   import ConnectionPoolEventCounter._
   val _poolStart: AtomicBoolean = new AtomicBoolean(false)
@@ -36,5 +33,5 @@ class ConnectionPoolEventCounter extends ConnectionPoolListener {
   def getCounts: ConnectionPoolEventCounts =
     ConnectionPoolEventCounts(_poolStart.get(), _poolStop.get(),
       _threadStart.getCount, _threadStop.getCount, _taskStart.getCount, _taskStop.getCount)
-  def getMetrics = ConnectionPoolEventCounter.PoolSnapshot(MeterSnapshot(_threadStart),MeterSnapshot(_threadStop),MeterSnapshot(_taskStart),MeterSnapshot(_taskStop))
+  def getMetrics = ConnectionPoolEventCounter.PoolSnapshot(MeterSnapshot(_threadStart), MeterSnapshot(_threadStop), MeterSnapshot(_taskStart), MeterSnapshot(_taskStop))
 }

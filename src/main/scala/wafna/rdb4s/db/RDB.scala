@@ -29,6 +29,13 @@ object RDB {
     */
   abstract class ConnectionManager[R <: Connection] {
     def createConnection(): R
+    /**
+      * Vendor specific implementations can override this to indicate that certain exceptions are unrecoverable.
+      * So indicating will cause the pool to stop executing new tasks.
+      * A notification will be sent to the listener whereupon the client should strongly consider exiting.
+      * Unrecoverable exceptions should be things like configuration errors that would require a restart, anyway.
+      */
+    def recoverableException(e: Throwable): Boolean = true
   }
   /**
     * Checks the number of records affected by an update.

@@ -63,7 +63,7 @@ object TestDB {
     */
   def apply(config: ConnectionPool.Config)(
       borrow: TestDB => Unit)(
-      implicit listener: ConnectionPoolListener = ConnectionPoolListener): Unit =
+      implicit listener: ConnectionPool.Listener = ConnectionPool.DefaultListener): Unit =
     HSQL(java.util.UUID.randomUUID().toString, config)(db => borrow(new TestDB(db)))
 }
 /**
