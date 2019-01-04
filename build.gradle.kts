@@ -11,13 +11,10 @@ plugins {
     id("com.github.johnrengelman.shadow") version "4.0.3"
     id("com.github.maiflai.scalatest") version "0.23"
 }
-//allprojects {
 repositories {
     mavenCentral()
 }
-//    apply<ScalaPlugin>()
-//    apply(plugin = "com.github.johnrengelman.shadow")
-//    apply(plugin = "com.github.maiflai.scalatest")
+
 group = "rdb4s"
 version = "0.1"
 tasks.withType<Jar> {
@@ -27,9 +24,7 @@ tasks.withType<Jar> {
     manifest {
         attributes(
                 Pair("Implementation-Title", project.name),
-                Pair("Implementation-Version", project.version)/*,
-            Pair("SHA", gitHead),
-            Pair("DESC", gitDescribeInfo)*/)
+                Pair("Implementation-Version", project.version))
     }
 }
 tasks.withType(ScalaCompile::class.java).configureEach {
@@ -45,8 +40,6 @@ tasks.withType(ScalaCompile::class.java).configureEach {
             "-deprecation",
             "-feature", "-encoding", "utf8")
 }
-//}
-// Makes slightly less noise in the output.
 dependencies {
     testCompile("com.codahale.metrics", "metrics-core", "3.0.2")
     testCompile("org.hsqldb", "hsqldb", "2.4.0")
